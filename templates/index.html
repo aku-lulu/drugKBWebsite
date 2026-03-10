@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PharmRG - 生物医学知识图谱</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- vis.js 网络图库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 左侧搜索面板 -->
+        <div class="sidebar">
+            <div class="logo">
+                <h1>Pharm<span>RG</span></h1>
+                <p>生物医学知识图谱</p>
+            </div>
+
+            <div class="search-panel">
+                <div class="search-type">
+                    <label for="searchType">搜索类型：</label>
+                    <select id="searchType">
+                        <option value="drug" selected>药物</option>
+                        <option value="gene" disabled>基因 (即将推出)</option>
+                        <option value="disease" disabled>疾病 (即将推出)</option>
+                        <option value="protein" disabled>蛋白质 (即将推出)</option>
+                    </select>
+                </div>
+
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="输入药物名称或ID...">
+                    <button id="searchBtn">搜索</button>
+                </div>
+
+                <div class="search-results" id="searchResults">
+                    <!-- 搜索结果将动态显示在这里 -->
+                </div>
+
+                <div class="selected-info" id="selectedInfo">
+                    <h3>当前选择</h3>
+                    <div class="info-content">
+                        <p class="placeholder">请选择一个药物</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧主要内容区域 -->
+        <div class="main-content">
+            <!-- 知识图谱区域 - 扩大 -->
+            <div class="card graph-card">
+                <div class="card-header">
+                    <h2>知识图谱</h2>
+                    <div class="graph-controls">
+                        <button id="zoomIn">+</button>
+                        <button id="zoomOut">-</button>
+                        <button id="fitGraph">适应屏幕</button>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div id="graph-container"></div>
+                </div>
+            </div>
+
+            <!-- 下方信息卡片区域 - 缩小 -->
+            <div class="info-cards">
+                <!-- 分子结构信息 -->
+                <div class="card molecular-card">
+                    <div class="card-header">
+                        <h2>分子结构信息</h2>
+                    </div>
+                    <div class="card-content" id="molecularInfo">
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="label">名称:</span>
+                                <span class="value" id="mol-name">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">DrugBank IDs:</span>
+                                <span class="value" id="mol-drugbank-ids">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">CAS号:</span>
+                                <span class="value" id="mol-cas">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">UNI:</span>
+                                <span class="value" id="mol-uni">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">状态:</span>
+                                <span class="value" id="mol-state">-</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">分组:</span>
+                                <span class="value" id="mol-groups">-</span>
+                            </div>
+                        </div>
+                        <div class="description" id="mol-description">
+                            <span class="label">描述:</span>
+                            <p>-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 药物相互作用详情 -->
+                <div class="card interactions-card">
+                    <div class="card-header">
+                        <h2>相互作用详情</h2>
+                    </div>
+                    <div class="card-content" id="interactionsList">
+                        <p class="placeholder">点击图谱中的节点查看详情</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 自定义脚本 -->
+    <script src="{{ url_for('static', filename='js/graph.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,767 @@
+/* 全局样式 - 黑色主题 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #0a0e1a;
+    color: #e0e0e0;
+    height: 100vh;
+    overflow: hidden;
+    font-size: 14px; /* 适中字体 */
+}
+
+.container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* 左侧边栏 - 保持四分之一宽度 */
+.sidebar {
+    width: 25%;
+    background: #111520;
+    border-right: 1px solid #2a2f3a;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+    z-index: 10;
+}
+
+/* Logo区域 */
+.logo {
+    padding: 20px 20px;
+    border-bottom: 1px solid #2a2f3a;
+}
+
+.logo h1 {
+    font-size: 26px; /* 适中 */
+    font-weight: 300;
+    letter-spacing: 1px;
+}
+
+.logo h1 span {
+    color: #00bcd4;
+    font-weight: 600;
+}
+
+.logo p {
+    font-size: 12px; /* 适中 */
+    color: #8a8f99;
+    margin-top: 3px;
+}
+
+/* 搜索面板 */
+.search-panel {
+    padding: 15px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.search-type {
+    margin-bottom: 0;
+}
+
+.search-type label {
+    display: block;
+    margin-bottom: 5px;
+    color: #8a8f99;
+    font-size: 13px; /* 适中 */
+    font-weight: 500;
+}
+
+.search-type select {
+    width: 100%;
+    padding: 8px 10px; /* 适中 */
+    background: #1e232f;
+    border: 1px solid #2a2f3a;
+    color: #e0e0e0;
+    border-radius: 4px;
+    font-size: 13px; /* 适中 */
+    cursor: pointer;
+}
+
+.search-type select:focus {
+    outline: none;
+    border-color: #00bcd4;
+}
+
+.search-box {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 0;
+}
+
+.search-box input {
+    flex: 1;
+    padding: 8px 12px; /* 适中 */
+    background: #1e232f;
+    border: 1px solid #2a2f3a;
+    color: #e0e0e0;
+    border-radius: 4px;
+    font-size: 13px; /* 适中 */
+}
+
+.search-box input:focus {
+    outline: none;
+    border-color: #00bcd4;
+}
+
+.search-box button {
+    padding: 8px 16px; /* 适中 */
+    background: #00bcd4;
+    color: #000;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 13px; /* 适中 */
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.search-box button:hover {
+    background: #00acc1;
+}
+
+/* 搜索结果 */
+.search-results {
+    max-height: 200px; /* 适中 */
+    overflow-y: auto;
+    background: #1e232f;
+    border: 1px solid #2a2f3a;
+    border-radius: 4px;
+    margin-bottom: 5px;
+}
+
+.result-item {
+    padding: 8px 12px; /* 适中 */
+    border-bottom: 1px solid #2a2f3a;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.result-item:hover {
+    background: #2a2f3a;
+}
+
+.result-item.selected {
+    background: #00bcd4;
+}
+
+.result-item.selected .name {
+    color: #000;
+}
+
+.result-item .name {
+    font-weight: 600;
+    margin-bottom: 3px;
+    font-size: 14px; /* 适中 */
+}
+
+.result-item .type {
+    font-size: 11px; /* 适中 */
+    color: #8a8f99;
+    margin-bottom: 2px;
+}
+
+.result-item .desc {
+    font-size: 11px; /* 适中 */
+    color: #8a8f99;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 当前选择信息 */
+.selected-info {
+    background: #1e232f;
+    border: 1px solid #2a2f3a;
+    border-radius: 4px;
+    padding: 12px;
+    margin-top: auto;
+}
+
+.selected-info h3 {
+    font-size: 14px; /* 适中 */
+    color: #8a8f99;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.selected-info .info-content {
+    font-size: 13px; /* 适中 */
+}
+
+.selected-info .info-item {
+    margin-bottom: 6px;
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.selected-info .label {
+    color: #8a8f99;
+    width: 85px;
+    font-size: 12px; /* 适中 */
+}
+
+.selected-info .value {
+    color: #e0e0e0;
+    flex: 1;
+    font-size: 12px; /* 适中 */
+    font-weight: 500;
+}
+
+.selected-info .placeholder {
+    color: #4a4f5a;
+    text-align: center;
+    padding: 10px;
+    font-size: 12px; /* 适中 */
+}
+
+/* 右侧主要内容 */
+.main-content {
+    width: 75%;
+    padding: 15px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 卡片通用样式 */
+.card {
+    background: #111520;
+    border: 1px solid #2a2f3a;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.card-header {
+    padding: 10px 15px; /* 适中 */
+    background: #1a1f2b;
+    border-bottom: 1px solid #2a2f3a;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.card-header h2 {
+    font-size: 16px; /* 适中 */
+    font-weight: 400;
+    color: #00bcd4;
+}
+
+.card-content {
+    padding: 12px; /* 适中 */
+}
+
+/* 知识图谱卡片 - 适中大小 */
+.graph-card {
+    height: 55vh; /* 适中高度 */
+    min-height: 400px; /* 适中最小高度 */
+}
+
+.graph-card .card-content {
+    padding: 8px;
+    height: calc(100% - 45px);
+}
+
+#graph-container {
+    width: 100%;
+    height: 100%;
+    background: #0a0e1a;
+    border-radius: 4px;
+}
+
+.graph-controls button {
+    background: #2a2f3a;
+    color: #e0e0e0;
+    border: 1px solid #3a3f4a;
+    width: 30px; /* 适中按钮 */
+    height: 30px; /* 适中按钮 */
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px; /* 适中 */
+    transition: all 0.2s;
+    margin-left: 5px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.graph-controls button:hover {
+    background: #3a3f4a;
+    border-color: #00bcd4;
+}
+
+/* 信息卡片区域 - 适中高度 */
+.info-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    height: calc(45vh - 30px); /* 适中高度 */
+    min-height: 250px; /* 适中最小高度 */
+}
+
+.molecular-card, .interactions-card {
+    height: 100%;
+    overflow-y: auto;
+}
+
+/* 分子结构信息网格 */
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.info-item .label {
+    font-size: 11px; /* 适中 */
+    color: #8a8f99;
+    margin-bottom: 2px;
+    font-weight: 500;
+}
+
+.info-item .value {
+    font-size: 13px; /* 适中 */
+    font-weight: 500;
+    color: #e0e0e0;
+    word-break: break-word;
+}
+
+.description {
+    margin-top: 10px;
+    border-top: 1px solid #2a2f3a;
+    padding-top: 8px;
+}
+
+.description .label {
+    font-size: 11px; /* 适中 */
+    color: #8a8f99;
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.description p {
+    font-size: 12px; /* 适中 */
+    line-height: 1.4;
+    color: #c0c0c0;
+    max-height: 60px;
+    overflow-y: auto;
+}
+
+/* 相互作用列表 */
+.interaction-item {
+    padding: 8px 12px; /* 适中 */
+    border-bottom: 1px solid #2a2f3a;
+}
+
+.interaction-item:last-child {
+    border-bottom: none;
+}
+
+.interaction-item .drug-name {
+    font-weight: 600;
+    color: #00bcd4;
+    margin-bottom: 3px;
+    font-size: 13px; /* 适中 */
+}
+
+.interaction-item .description {
+    font-size: 11px; /* 适中 */
+    color: #8a8f99;
+    line-height: 1.3;
+    margin-top: 2px;
+    border: none;
+    padding: 0;
+}
+
+.placeholder {
+    color: #4a4f5a;
+    text-align: center;
+    padding: 15px;
+    font-style: italic;
+    font-size: 12px; /* 适中 */
+}
+
+/* 搜索建议相关样式 */
+.suggestions-header {
+    padding: 6px 12px; /* 适中 */
+    background: #1a1f2b;
+    color: #8a8f99;
+    font-size: 11px; /* 适中 */
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #2a2f3a;
+    font-weight: 600;
+}
+
+.suggestion-item {
+    border-left: 3px solid transparent;
+}
+
+.suggestion-item:hover {
+    border-left-color: #00bcd4;
+}
+
+.match-badge {
+    display: inline-block;
+    padding: 2px 6px; /* 适中 */
+    border-radius: 3px;
+    font-size: 10px; /* 适中 */
+    margin-left: 5px;
+    font-weight: 500;
+}
+
+.name-match {
+    background: #2a3a4a;
+    color: #8ab4f8;
+}
+
+.id-match {
+    background: #3a2a4a;
+    color: #c58af8;
+}
+
+.drugbank-preview {
+    color: #8a8f99;
+    font-size: 11px; /* 适中 */
+    font-family: monospace;
+}
+
+.drugbank-count {
+    color: #5a5f6a;
+    font-size: 10px; /* 适中 */
+}
+
+/* 图谱控制按钮组 */
+.graph-controls {
+    display: flex;
+    gap: 5px;
+}
+
+.graph-controls button {
+    background: #2a2f3a;
+    color: #e0e0e0;
+    border: 1px solid #3a3f4a;
+    width: auto;
+    padding: 5px 12px; /* 适中 */
+    height: 30px; /* 适中 */
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px; /* 适中 */
+    transition: all 0.2s;
+    white-space: nowrap;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.graph-controls button:hover {
+    background: #3a3f4a;
+    border-color: #00bcd4;
+}
+
+/* 图谱统计信息 */
+.graph-stats {
+    font-size: 11px; /* 适中 */
+    color: #8a8f99;
+    margin-left: 5px;
+    font-weight: normal;
+}
+
+.graph-stats.no-data {
+    color: #ff8888;
+}
+
+/* 图谱加载状态 */
+.graph-loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #00bcd4;
+    font-size: 14px; /* 适中 */
+    z-index: 1000;
+    background: rgba(17, 21, 32, 0.95);
+    padding: 15px 30px; /* 适中 */
+    border-radius: 6px;
+    border: 1px solid #00bcd4;
+}
+
+/* 图谱错误提示 */
+.graph-error {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #ff4444;
+    font-size: 14px; /* 适中 */
+    z-index: 1000;
+    background: rgba(17, 21, 32, 0.95);
+    padding: 15px 30px; /* 适中 */
+    border-radius: 6px;
+    border: 1px solid #ff4444;
+}
+
+/* 节点计数提示 */
+.node-count-hint {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.8);
+    color: #8a8f99;
+    padding: 5px 10px; /* 适中 */
+    border-radius: 4px;
+    font-size: 11px; /* 适中 */
+    z-index: 1000;
+    border: 1px solid #2a2f3a;
+    backdrop-filter: blur(5px);
+}
+
+.node-count-hint .more-hint {
+    color: #00bcd4;
+    margin-left: 5px;
+    font-weight: 500;
+}
+
+/* 图谱通知 */
+.graph-notification {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 188, 212, 0.95);
+    color: #000;
+    padding: 8px 15px; /* 适中 */
+    border-radius: 4px;
+    font-size: 12px; /* 适中 */
+    z-index: 1000;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    font-weight: 500;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    0% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1a1f2b;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #2a2f3a;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #3a3f4a;
+}
+
+/* vis.js 图谱样式调整 */
+.vis-network {
+    outline: none;
+}
+
+.vis-network .vis-label {
+    font-size: 11px !important;
+}
+
+.vis-network .vis-node {
+    font-size: 11px !important;
+}
+
+.vis-network .vis-edge {
+    font-size: 10px !important;
+}
+
+/* 自定义 vis.js 悬停提示样式 */
+.vis-tooltip {
+    background-color: #1e232f !important;
+    border: 1px solid #00bcd4 !important;
+    border-radius: 3px !important;
+    color: #e0e0e0 !important;
+    font-size: 11px !important;
+    padding: 4px 8px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5) !important;
+    max-width: 200px !important;
+    white-space: normal !important;
+    line-height: 1.3 !important;
+}
+/* 搜索建议中的匹配徽章 */
+.match-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    margin-left: 5px;
+}
+
+.name-match {
+    background: #2a3a4a;
+    color: #8ab4f8;
+}
+
+.id-match {
+    background: #3a2a4a;
+    color: #c58af8;
+}
+
+/* DrugBank ID预览 */
+.drugbank-preview {
+    color: #8a8f99;
+    font-size: 10px;
+    font-family: monospace;
+}
+
+.drugbank-count {
+    color: #5a5f6a;
+    font-size: 9px;
+}
+
+/* 搜索建议头部 */
+.suggestions-header {
+    padding: 8px 10px;
+    background: #1a1f2b;
+    color: #8a8f99;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #2a2f3a;
+}
+
+/* 建议项 */
+.suggestion-item {
+    border-left: 3px solid transparent;
+}
+
+.suggestion-item:hover {
+    border-left-color: #00bcd4;
+}
+
+/* 搜索结果项 */
+.result-item {
+    padding: 8px 10px;
+    border-bottom: 1px solid #2a2f3a;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.result-item:hover {
+    background: #2a2f3a;
+}
+
+.result-item.selected {
+    background: #00bcd4;
+}
+
+.result-item.selected .name {
+    color: #000;
+}
+
+.result-item .name {
+    font-weight: 600;
+    margin-bottom: 3px;
+    font-size: 13px;
+}
+
+.result-item .type {
+    font-size: 10px;
+    color: #8a8f99;
+    margin-bottom: 2px;
+}
+
+.result-item .desc {
+    font-size: 11px;
+    color: #8a8f99;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 相互作用列表 */
+.interaction-item {
+    padding: 8px 10px;
+    border-bottom: 1px solid #2a2f3a;
+}
+
+.interaction-item:last-child {
+    border-bottom: none;
+}
+
+.interaction-item .drug-name {
+    font-weight: 600;
+    color: #00bcd4;
+    margin-bottom: 3px;
+    font-size: 12px;
+}
+
+.interaction-item .description {
+    font-size: 11px;
+    color: #8a8f99;
+    line-height: 1.4;
+}
+
+/* 占位符文本 */
+.placeholder {
+    color: #4a4f5a;
+    text-align: center;
+    padding: 20px;
+    font-style: italic;
+    font-size: 12px;
+}
+
+/* 信息项样式 */
+.info-item {
+    margin-bottom: 8px;
+    display: flex;
+}
+
+.info-item .label {
+    color: #8a8f99;
+    width: 100px;
+    font-size: 11px;
+}
+
+.info-item .value {
+    color: #e0e0e0;
+    flex: 1;
+    font-size: 11px;
+    word-break: break-word;
+}
