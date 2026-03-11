@@ -22,10 +22,9 @@
                 <div class="search-type">
                     <label for="searchType">搜索类型：</label>
                     <select id="searchType">
-                        <option value="drug" selected>药物</option>
-                        <option value="gene" disabled>基因 (即将推出)</option>
-                        <option value="disease" disabled>疾病 (即将推出)</option>
-                        <option value="protein" disabled>蛋白质 (即将推出)</option>
+                        <option value="drug" selected>💊 药物 (DrugBank)</option>
+                        <option value="gene">🧬 基因 (WikiPathways)</option>
+                        <option value="protein">⚛️ 蛋白质 (WikiPathways)</option>
                     </select>
                 </div>
 
@@ -41,7 +40,7 @@
                 <div class="selected-info" id="selectedInfo">
                     <h3>当前选择</h3>
                     <div class="info-content">
-                        <p class="placeholder">请选择一个药物</p>
+                        <p class="placeholder">请选择一个项目</p>
                     </div>
                 </div>
             </div>
@@ -49,7 +48,7 @@
 
         <!-- 右侧主要内容区域 -->
         <div class="main-content">
-            <!-- 知识图谱区域 - 扩大 -->
+            <!-- 知识图谱区域 -->
             <div class="card graph-card">
                 <div class="card-header">
                     <h2>知识图谱</h2>
@@ -57,6 +56,7 @@
                         <button id="zoomIn">+</button>
                         <button id="zoomOut">-</button>
                         <button id="fitGraph">适应屏幕</button>
+                        <!-- 聚类、展开全部、重置按钮会通过JavaScript动态添加 -->
                     </div>
                 </div>
                 <div class="card-content">
@@ -64,12 +64,12 @@
                 </div>
             </div>
 
-            <!-- 下方信息卡片区域 - 缩小 -->
+            <!-- 下方信息卡片区域 -->
             <div class="info-cards">
                 <!-- 分子结构信息 -->
                 <div class="card molecular-card">
                     <div class="card-header">
-                        <h2>分子结构信息</h2>
+                        <h2 id="molecular-title">分子结构信息</h2>
                     </div>
                     <div class="card-content" id="molecularInfo">
                         <div class="info-grid">
@@ -78,7 +78,7 @@
                                 <span class="value" id="mol-name">-</span>
                             </div>
                             <div class="info-item">
-                                <span class="label">DrugBank IDs:</span>
+                                <span class="label" id="mol-id-label">DrugBank IDs:</span>
                                 <span class="value" id="mol-drugbank-ids">-</span>
                             </div>
                             <div class="info-item">
@@ -105,13 +105,13 @@
                     </div>
                 </div>
 
-                <!-- 药物相互作用详情 -->
+                <!-- 详细信息列表 -->
                 <div class="card interactions-card">
                     <div class="card-header">
-                        <h2>相互作用详情</h2>
+                        <h2 id="details-title">详细信息</h2>
                     </div>
                     <div class="card-content" id="interactionsList">
-                        <p class="placeholder">点击图谱中的节点查看详情</p>
+                        <p class="placeholder">请选择一个节点查看详情</p>
                     </div>
                 </div>
             </div>

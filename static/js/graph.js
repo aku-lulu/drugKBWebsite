@@ -2,21 +2,29 @@
 let network = null;
 let nodes = new vis.DataSet([]);
 let edges = new vis.DataSet([]);
-let currentDrugId = null;
+let currentItemId = null;
+let currentTargetLabel = null;
 let suggestionTimeout = null;
-let currentLayout = 'default';
 let nodeCountHint = null;
-let clusteredNodes = new Set(); // 记录被聚类的节点
+let clusteredNodes = new Set();
 let clusterInfo = {
     clusterId: null,
     childNodes: []
-}; // 记录聚类信息
+};
 
 // 初始化页面
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('页面加载完成，初始化...');
     initEventListeners();
     initGraph();
-    addLayoutControls();
+
+    // 确保DOM完全加载后添加控制按钮
+    setTimeout(() => {
+        addLayoutControls();
+    }, 100);
+
+    // 初始化placeholder
+    updatePlaceholderByType();
 });
 
 // 初始化事件监听
@@ -47,8 +55,22 @@ function initEventListeners() {
 
     // 搜索类型改变
     document.getElementById('searchType').addEventListener('change', function() {
+        updatePlaceholderByType();
+        updateTitlesByType();
+
         document.getElementById('searchResults').innerHTML = '';
         document.getElementById('searchInput').value = '';
+
+        // 清空图谱
+        if (network) {
+            nodes.clear();
+            edges.clear();
+            document.getElementById('graph-container').innerHTML = '<div id="graph-container"></div>';
+            initGraph();
+        }
+
+        // 清空信息显示
+        clearAllInfoDisplays();
     });
 
     // 图谱控制
@@ -65,97 +87,163 @@ function initEventListeners() {
     });
 }
 
-// 添加布局控制按钮
-function addLayoutControls() {
-    const controls = document.querySelector('.graph-controls');
-    if (controls) {
-        // 布局切换按钮
-        const layoutBtn = document.createElement('button');
-        layoutBtn.innerHTML = '切换布局';
-        layoutBtn.title = '在默认布局和层次布局之间切换';
-        layoutBtn.onclick = toggleLayout;
-        controls.appendChild(layoutBtn);
+// 根据搜索类型更新placeholder
+function updatePlaceholderByType() {
+    const searchType = document.getElementById('searchType').value;
+    const searchInput = document.getElementById('searchInput');
 
-        // 聚类按钮
-        const clusterBtn = document.createElement('button');
-        clusterBtn.innerHTML = '聚类';
-        clusterBtn.title = '将相关节点聚合成簇';
-        clusterBtn.onclick = clusterGraph;
-        controls.appendChild(clusterBtn);
-
-        // 展开全部按钮
-        const expandBtn = document.createElement('button');
-        expandBtn.innerHTML = '展开全部';
-        expandBtn.title = '展开所有聚类节点';
-        expandBtn.onclick = expandAllClusters;
-        controls.appendChild(expandBtn);
-
-        // 重置视图按钮
-        const resetBtn = document.createElement('button');
-        resetBtn.innerHTML = '重置';
-        resetBtn.title = '重置视图';
-        resetBtn.onclick = resetView;
-        controls.appendChild(resetBtn);
+    switch(searchType) {
+        case 'drug':
+            searchInput.placeholder = '请输入药物';
+            break;
+        case 'gene':
+            searchInput.placeholder = '请输入基因';
+            break;
+        case 'protein':
+            searchInput.placeholder = '请输入蛋白质';
+            break;
     }
 }
 
-// 切换布局
-function toggleLayout() {
-    if (!network) return;
+// 根据搜索类型更新标题
+function updateTitlesByType() {
+    const searchType = document.getElementById('searchType').value;
+    const molecularTitle = document.getElementById('molecular-title');
+    const detailsTitle = document.getElementById('details-title');
+    const molIdLabel = document.getElementById('mol-id-label');
 
-    if (currentLayout === 'default') {
-        // 切换到层次布局
-        network.setOptions({
-            layout: {
-                hierarchical: {
-                    enabled: true,
-                    direction: 'UD',
-                    sortMethod: 'directed',
-                    nodeSpacing: 150,
-                    levelSeparation: 200,
-                    edgeMinimization: true
-                }
-            },
-            physics: {
-                enabled: false
-            }
-        });
-        currentLayout = 'hierarchical';
-        showNotification('已切换到层次布局');
-    } else {
-        // 切换回默认布局
-        network.setOptions({
-            layout: {
-                hierarchical: {
-                    enabled: false
-                }
-            },
-            physics: {
-                enabled: true,
-                stabilization: {
-                    iterations: 100,
-                    fit: true
-                }
-            }
-        });
-        currentLayout = 'default';
-        showNotification('已切换到默认布局');
+    switch(searchType) {
+        case 'drug':
+            molecularTitle.textContent = '分子结构信息';
+            detailsTitle.textContent = '相互作用详情';
+            if (molIdLabel) molIdLabel.textContent = 'DrugBank IDs:';
+            break;
+        case 'gene':
+            molecularTitle.textContent = '基因信息';
+            detailsTitle.textContent = '基因列表';
+            if (molIdLabel) molIdLabel.textContent = '基因类型:';
+            break;
+        case 'protein':
+            molecularTitle.textContent = '蛋白质信息';
+            detailsTitle.textContent = '蛋白质列表';
+            if (molIdLabel) molIdLabel.textContent = '蛋白质类型:';
+            break;
     }
-    network.fit();
+}
+
+// 清空所有信息显示
+function clearAllInfoDisplays() {
+    const searchType = document.getElementById('searchType').value;
+
+    // 清空分子信息
+    document.getElementById('mol-name').textContent = '-';
+    document.getElementById('mol-drugbank-ids').textContent = '-';
+    document.getElementById('mol-cas').textContent = '-';
+    document.getElementById('mol-uni').textContent = '-';
+    document.getElementById('mol-state').textContent = '-';
+    document.getElementById('mol-groups').textContent = '-';
+
+    const descElement = document.getElementById('mol-description');
+    if (descElement) {
+        const p = descElement.querySelector('p') || document.createElement('p');
+        if (searchType === 'drug') {
+            p.textContent = '请选择一个药物查看分子结构信息';
+        } else if (searchType === 'gene') {
+            p.textContent = '请选择一个基因查看详细信息';
+        } else if (searchType === 'protein') {
+            p.textContent = '请选择一个蛋白质查看详细信息';
+        }
+        p.style.whiteSpace = 'normal';
+        p.style.color = '#8a8f99';
+        if (!descElement.querySelector('p')) descElement.appendChild(p);
+    }
+
+    // 清空相互作用列表
+    const interactionsList = document.getElementById('interactionsList');
+    if (searchType === 'drug') {
+        interactionsList.innerHTML = '<p class="placeholder">请选择一个药物查看相互作用详情</p>';
+    } else if (searchType === 'gene') {
+        interactionsList.innerHTML = '<p class="placeholder">请选择一个基因查看通路中的节点</p>';
+    } else if (searchType === 'protein') {
+        interactionsList.innerHTML = '<p class="placeholder">请选择一个蛋白质查看通路中的节点</p>';
+    }
+
+    // 清空当前选择信息
+    const selectedInfo = document.querySelector('.selected-info .info-content');
+    if (selectedInfo) {
+        selectedInfo.innerHTML = '<p class="placeholder">请选择一个项目</p>';
+    }
+}
+
+// 添加布局控制按钮 - 只保留聚类、展开全部、重置功能
+function addLayoutControls() {
+    const controls = document.querySelector('.graph-controls');
+    if (!controls) return;
+
+    // 清除现有按钮（避免重复添加）
+    const existingButtons = controls.querySelectorAll('button:not(#zoomIn):not(#zoomOut):not(#fitGraph)');
+    existingButtons.forEach(btn => btn.remove());
+
+    // 聚类按钮
+    const clusterBtn = document.createElement('button');
+    clusterBtn.id = 'clusterBtn';
+    clusterBtn.innerHTML = '聚类';
+    clusterBtn.title = '将相关节点聚合成簇';
+    clusterBtn.onclick = clusterGraph;
+    controls.appendChild(clusterBtn);
+
+    // 展开全部按钮
+    const expandBtn = document.createElement('button');
+    expandBtn.id = 'expandBtn';
+    expandBtn.innerHTML = '展开全部';
+    expandBtn.title = '展开所有聚类节点';
+    expandBtn.onclick = expandAllClusters;
+    controls.appendChild(expandBtn);
+
+    // 重置视图按钮
+    const resetBtn = document.createElement('button');
+    resetBtn.id = 'resetViewBtn';
+    resetBtn.innerHTML = '重置';
+    resetBtn.title = '重置视图';
+    resetBtn.onclick = resetView;
+    controls.appendChild(resetBtn);
+
+    console.log('布局控制按钮已添加');
 }
 
 // 聚类函数
 function clusterGraph() {
-    if (!network) return;
+    if (!network) {
+        showNotification('图谱未初始化');
+        return;
+    }
 
-    // 清除之前的聚类信息
+    const searchType = document.getElementById('searchType').value;
+    if (searchType !== 'drug') {
+        showNotification('聚类功能仅适用于药物图谱');
+        return;
+    }
+
+    // 检查是否有相关节点
+    let hasRelatedNodes = false;
+    nodes.forEach(node => {
+        if (node.group === 'related') {
+            hasRelatedNodes = true;
+        }
+    });
+
+    if (!hasRelatedNodes) {
+        showNotification('没有可聚类的相关节点');
+        return;
+    }
+
+    // 清除之前的聚类记录
     clusteredNodes.clear();
     clusterInfo = {
         clusterId: null,
         childNodes: []
     };
 
-    // 获取所有相关节点
     const relatedNodes = [];
     nodes.forEach(node => {
         if (node.group === 'related') {
@@ -168,13 +256,8 @@ function clusterGraph() {
         return;
     }
 
-    // 生成唯一的聚类ID
-    const clusterId = 'cluster_all';
+    const clusterId = 'cluster_' + Date.now();
 
-    // 保存被聚类的节点ID
-    const childNodeIds = relatedNodes;
-
-    // 聚类选项
     const clusterOptions = {
         joinCondition: function(childNode) {
             return childNode.group === 'related';
@@ -200,50 +283,43 @@ function clusterGraph() {
             },
             title: `包含 ${relatedNodes.length} 个相关药物\n点击展开查看`
         },
-        clusterEdgeProperties: {
-            color: '#00bcd4',
-            width: 2,
-            dashes: false
+        processProperties: function(clusterNode, childNodes, childEdges) {
+            childNodes.forEach(node => {
+                clusteredNodes.add(node.id);
+            });
+            clusterInfo = {
+                clusterId: clusterId,
+                childNodes: childNodes.map(n => n.id)
+            };
+            return clusterNode;
         }
     };
 
-    // 执行聚类
-    network.cluster(clusterOptions);
+    try {
+        network.cluster(clusterOptions);
+        showNotification(`已聚类 ${relatedNodes.length} 个相关节点`);
 
-    // 保存聚类信息
-    clusterInfo = {
-        clusterId: clusterId,
-        childNodes: childNodeIds
-    };
-
-    // 记录被聚类的节点
-    childNodeIds.forEach(id => {
-        clusteredNodes.add(id);
-    });
-
-    showNotification(`已聚类 ${relatedNodes.length} 个相关节点`);
-
-    // 更新相互作用列表
-    setTimeout(() => {
-        updateInteractionsList(edges.get());
-    }, 500);
+        setTimeout(() => {
+            updateInteractionsList(edges.get());
+        }, 500);
+    } catch (e) {
+        console.error('聚类失败:', e);
+        showNotification('聚类失败: ' + e.message);
+    }
 }
 
 // 展开聚类
 function expandCluster() {
     if (!network) return false;
 
-    // 检查是否有聚类
     if (!clusterInfo.clusterId) {
         showNotification('没有可展开的聚类');
         return false;
     }
 
     try {
-        // 使用openCluster方法展开聚类
         network.openCluster(clusterInfo.clusterId);
 
-        // 清除聚类信息
         clusteredNodes.clear();
         clusterInfo = {
             clusterId: null,
@@ -252,10 +328,8 @@ function expandCluster() {
 
         showNotification('已展开聚类');
 
-        // 重新调整视图
         setTimeout(() => {
             network.fit();
-            // 更新相互作用列表
             updateInteractionsList(edges.get());
         }, 500);
 
@@ -276,28 +350,34 @@ function expandAllClusters() {
 function resetView() {
     if (!network) return;
 
-    // 先展开聚类
+    console.log('重置视图');
+
+    // 展开所有聚类
     expandCluster();
 
-    // 重置布局
-    setTimeout(() => {
-        network.setOptions({
-            layout: {
-                hierarchical: {
-                    enabled: false
-                }
-            },
-            physics: {
+    // 重新启用物理引擎
+    network.setOptions({
+        physics: {
+            enabled: true,
+            stabilization: {
                 enabled: true,
-                stabilization: true
+                iterations: 100,
+                fit: true
+            }
+        }
+    });
+
+    // 适应视图
+    setTimeout(() => {
+        network.fit({
+            animation: {
+                duration: 500,
+                easingFunction: 'easeInOutQuad'
             }
         });
-
-        // 适应视图
-        network.fit();
-        currentLayout = 'default';
-        showNotification('视图已重置');
     }, 600);
+
+    showNotification('视图已重置');
 }
 
 // 显示通知
@@ -333,25 +413,56 @@ function displaySuggestions(suggestions) {
     }
 
     let html = '<div class="suggestions-header">搜索建议</div>';
+
     suggestions.forEach(suggestion => {
         let matchInfo = '';
-        if (suggestion.matched_field === 'name') {
-            matchInfo = `<span class="match-badge name-match">名称匹配</span>`;
-        } else {
-            matchInfo = `<span class="match-badge id-match">ID: ${suggestion.matched_value}</span>`;
+        let icon = '';
+        let typeColor = '';
+
+        if (suggestion.type === 'drug') {
+            icon = '💊';
+            typeColor = '#00bcd4';
+            if (suggestion.matched_field === 'name') {
+                matchInfo = '<span class="match-badge name-match">名称匹配</span>';
+            } else {
+                matchInfo = '<span class="match-badge id-match">ID: ' + (suggestion.matched_value || '') + '</span>';
+            }
+        } else if (suggestion.type === 'gene') {
+            icon = '🧬';
+            typeColor = '#4caf50';
+            matchInfo = '<span class="match-badge" style="background: #1e3a2a; color: #4caf50;">基因</span>';
+        } else if (suggestion.type === 'protein') {
+            icon = '⚛️';
+            typeColor = '#ff9800';
+            matchInfo = '<span class="match-badge" style="background: #3a2a1e; color: #ff9800;">蛋白质</span>';
         }
 
-        const drugbankInfo = suggestion.drugbank_ids && suggestion.drugbank_ids.length > 0
-            ? `<span class="drugbank-preview">${suggestion.drugbank_ids.join(', ')}</span>`
-            : '';
+        // 安全地处理字符串
+        const safeName = (suggestion.name || '').replace(/['"]/g, '');
+        const safePathwayName = (suggestion.pathway_name || '').replace(/['"]/g, '');
+        const safeXref = (suggestion.xref || '').replace(/['"]/g, '');
+        const safeOrganism = (suggestion.organism || '').replace(/['"]/g, '');
+        const safeDescription = (suggestion.description || '').replace(/['"]/g, '');
 
-        html += `
-            <div class="result-item suggestion-item" onclick="selectDrug('${suggestion.id}')">
-                <div class="name">${suggestion.name}</div>
-                <div class="type">${suggestion.type} ${matchInfo}</div>
-                <div class="desc">${drugbankInfo}</div>
-            </div>
-        `;
+        // 构建HTML字符串
+        html += '<div class="result-item suggestion-item" onclick="selectItem(\'' + suggestion.id + '\', \'' + (suggestion.node_label || safeName).replace(/'/g, "\\'") + '\')">';
+        html += '<div class="name" style="color: ' + typeColor + ';">' + icon + ' ' + safeName + '</div>';
+        html += '<div class="type">' + suggestion.type.toUpperCase() + ' ' + matchInfo + '</div>';
+
+        if (suggestion.pathway_name) {
+            html += '<div class="desc" style="color: #9c27b0; font-size: 11px;">通路: ' + safePathwayName + '</div>';
+        }
+
+        if (suggestion.organism) {
+            html += '<div class="desc" style="color: #8a8f99; font-size: 10px;">' + safeOrganism + '</div>';
+        }
+
+        if (suggestion.xref) {
+            html += '<div class="desc" style="color: #8a8f99; font-size: 10px; font-family: monospace;">' + safeXref + '</div>';
+        }
+
+        html += '<div class="desc">' + safeDescription + '</div>';
+        html += '</div>';
     });
 
     container.innerHTML = html;
@@ -388,62 +499,115 @@ function displaySearchResults(results) {
     }
 
     let html = '<div class="suggestions-header">搜索结果</div>';
+
     results.forEach(result => {
-        const drugbankIds = result.drugbank_ids || [];
-        let drugbankHtml = '';
-        if (drugbankIds.length > 0) {
-            const displayIds = drugbankIds.slice(0, 3);
-            drugbankHtml = '<span class="drugbank-preview">' + displayIds.join(', ') + '</span>';
-            if (drugbankIds.length > 3) {
-                drugbankHtml += ` <span class="drugbank-count">(+${drugbankIds.length - 3})</span>`;
-            }
+        let icon = '';
+        let typeColor = '';
+
+        if (result.type === 'drug') {
+            icon = '💊';
+            typeColor = '#00bcd4';
+        } else if (result.type === 'gene') {
+            icon = '🧬';
+            typeColor = '#4caf50';
+        } else if (result.type === 'protein') {
+            icon = '⚛️';
+            typeColor = '#ff9800';
         }
 
-        html += `
-            <div class="result-item" onclick="selectDrug('${result.id}')">
-                <div class="name">${result.name}</div>
-                <div class="desc">${drugbankHtml}</div>
-                <div class="desc">${result.description || ''}</div>
-            </div>
-        `;
+        // 安全地处理字符串
+        const safeName = (result.name || '').replace(/['"]/g, '');
+        const safePathwayName = (result.pathway_name || '').replace(/['"]/g, '');
+        const safeXref = (result.xref || '').replace(/['"]/g, '');
+        const safeOrganism = (result.organism || '').replace(/['"]/g, '');
+        const safeDescription = (result.description || '').replace(/['"]/g, '');
+
+        // 构建HTML字符串
+        html += '<div class="result-item" onclick="selectItem(\'' + result.id + '\', \'' + (result.node_label || safeName).replace(/'/g, "\\'") + '\')">';
+        html += '<div class="name" style="color: ' + typeColor + ';">' + icon + ' ' + safeName + '</div>';
+
+        if (result.pathway_name) {
+            html += '<div class="desc" style="color: #9c27b0;">通路: ' + safePathwayName + '</div>';
+        }
+
+        if (result.organism) {
+            html += '<div class="desc" style="color: #8a8f99;">' + safeOrganism + '</div>';
+        }
+
+        if (result.xref) {
+            html += '<div class="desc" style="color: #8a8f99; font-size: 11px;">' + safeXref + '</div>';
+        }
+
+        html += '<div class="desc">' + safeDescription + '</div>';
+        html += '</div>';
     });
 
     container.innerHTML = html;
 }
 
-// 选择药物
-function selectDrug(drugId) {
-    currentDrugId = drugId;
+// 选择项目
+function selectItem(itemId, itemLabel) {
+    console.log('选择项目 - ID:', itemId, '标签:', itemLabel);
+
+    if (!itemId) {
+        console.error('项目ID为空');
+        showNotification('无效的项目ID');
+        return;
+    }
+
+    currentItemId = itemId;
+    currentTargetLabel = itemLabel || '';
 
     // 更新选中状态
     document.querySelectorAll('.result-item').forEach(item => {
         item.classList.remove('selected');
     });
 
-    const selectedItem = Array.from(document.querySelectorAll('.result-item')).find(
-        item => item.getAttribute('onclick')?.includes(drugId)
-    );
+    // 查找并高亮选中的项
+    const selectedItem = Array.from(document.querySelectorAll('.result-item')).find(item => {
+        const onclick = item.getAttribute('onclick');
+        return onclick && onclick.includes(itemId);
+    });
+
     if (selectedItem) {
         selectedItem.classList.add('selected');
+        console.log('已高亮选中项');
+    } else {
+        console.warn('未找到对应的选中项元素');
     }
 
-    // 加载图谱
-    loadGraph(drugId);
+    const searchType = document.getElementById('searchType').value;
+    console.log('搜索类型:', searchType);
 
-    // 加载分子信息
-    loadMolecularInfo(drugId);
+    // 清空之前的图谱和显示
+    if (network) {
+        nodes.clear();
+        edges.clear();
+    }
 
-    // 更新当前选择信息
-    updateSelectedInfo(drugId);
+    // 根据类型加载不同内容
+    if (searchType === 'drug') {
+        console.log('加载药物图谱:', itemId);
+        loadDrugGraph(itemId);
+        loadMolecularInfo(itemId);
+        updateSelectedInfo(itemId);
+    } else if (searchType === 'gene' || searchType === 'protein') {
+        console.log('加载通路图谱 - 通路ID:', itemId, '目标节点:', currentTargetLabel);
+        const pathwayId = String(itemId);
+        loadPathwayGraph(pathwayId, currentTargetLabel);
+        updatePathwayInfo(pathwayId);
+        clearMolecularInfoForGene();
+    } else {
+        console.error('未知的搜索类型:', searchType);
+    }
 }
 
-// 初始化图谱
+// 初始化图谱 - 使用默认布局
 function initGraph() {
     const container = document.getElementById('graph-container');
 
     const options = {
         nodes: {
-            shape: 'dot',
             font: {
                 color: '#e0e0e0',
                 size: 12,
@@ -491,14 +655,12 @@ function initGraph() {
                 springLength: 200,
                 springConstant: 0.04,
                 damping: 0.09
-            },
-            maxVelocity: 50,
-            minVelocity: 0.1
+            }
         },
         layout: {
             improvedLayout: true,
             hierarchical: {
-                enabled: false
+                enabled: false  // 始终使用默认布局
             }
         },
         interaction: {
@@ -510,6 +672,7 @@ function initGraph() {
             dragView: true
         },
         groups: {
+            // 药物图谱组
             center: {
                 color: {
                     background: '#00bcd4',
@@ -543,6 +706,94 @@ function initGraph() {
                     color: '#e0e0e0'
                 },
                 shape: 'dot'
+            },
+            // 通路图谱组
+            pathway: {
+                color: {
+                    background: '#9c27b0',
+                    border: '#ffffff',
+                    highlight: {
+                        background: '#7b1fa2',
+                        border: '#ffffff'
+                    }
+                },
+                size: 30,
+                borderWidth: 3,
+                font: {
+                    size: 14,
+                    color: '#ffffff',
+                    bold: true
+                },
+                shape: 'box'
+            },
+            gene: {
+                color: {
+                    background: '#4caf50',
+                    border: '#ffffff',
+                    highlight: {
+                        background: '#388e3c',
+                        border: '#00bcd4'
+                    }
+                },
+                size: 20,
+                font: {
+                    size: 12,
+                    color: '#e0e0e0'
+                },
+                shape: 'dot'
+            },
+            protein: {
+                color: {
+                    background: '#ff9800',
+                    border: '#ffffff',
+                    highlight: {
+                        background: '#f57c00',
+                        border: '#00bcd4'
+                    }
+                },
+                size: 20,
+                font: {
+                    size: 12,
+                    color: '#e0e0e0'
+                },
+                shape: 'dot'
+            },
+            // 目标节点组（基因/蛋白质的搜索目标使用星形）
+            target_gene: {
+                color: {
+                    background: '#4caf50',
+                    border: '#ffffff',
+                    highlight: {
+                        background: '#388e3c',
+                        border: '#00bcd4'
+                    }
+                },
+                size: 30,
+                borderWidth: 4,
+                font: {
+                    size: 14,
+                    color: '#ffffff',
+                    bold: true
+                },
+                shape: 'star'
+            },
+            target_protein: {
+                color: {
+                    background: '#ff9800',
+                    border: '#ffffff',
+                    highlight: {
+                        background: '#f57c00',
+                        border: '#00bcd4'
+                    }
+                },
+                size: 30,
+                borderWidth: 4,
+                font: {
+                    size: 14,
+                    color: '#ffffff',
+                    bold: true
+                },
+                shape: 'star'
             },
             more: {
                 color: {
@@ -591,15 +842,19 @@ function initGraph() {
 
             if (node) {
                 if (node.group === 'more') {
-                    // 点击"更多"节点，显示提示
                     if (confirm('有更多未显示的相互作用关系，是否加载全部？')) {
-                        loadFullGraph(currentDrugId);
+                        loadFullDrugGraph(currentItemId);
                     }
                 } else if (node.group === 'related') {
-                    selectDrug(nodeId);
+                    selectItem(nodeId, node.label);
                 } else if (node.group === 'cluster') {
-                    // 点击聚类节点，展开
                     expandCluster();
+                } else if (node.group === 'gene' || node.group === 'protein' ||
+                           node.group === 'target_gene' || node.group === 'target_protein') {
+                    showGeneProteinDetails(node);
+                    highlightNode(nodeId);
+                } else if (node.group === 'pathway') {
+                    updatePathwayInfo(currentItemId);
                 }
             }
         }
@@ -613,14 +868,15 @@ function initGraph() {
 
             if (node) {
                 if (node.group === 'more') {
-                    // 双击"更多"节点，加载全部
-                    loadFullGraph(currentDrugId);
+                    loadFullDrugGraph(currentItemId);
                 } else if (node.group === 'cluster') {
-                    // 双击聚类节点，展开
                     expandCluster();
-                } else if (node.group === 'related') {
-                    // 双击相关节点，也可以选择跳转
-                    selectDrug(nodeId);
+                } else if (node.group === 'gene' || node.group === 'protein' ||
+                           node.group === 'target_gene' || node.group === 'target_protein') {
+                    network.focus(nodeId, {
+                        scale: 2.0,
+                        animation: true
+                    });
                 }
             }
         }
@@ -642,17 +898,161 @@ function initGraph() {
         network.canvas.body.container.style.cursor = 'default';
     });
 
-    // 稳定后调整视图
     network.once('stabilized', function() {
         network.fit();
     });
 }
 
-// 加载图谱数据
-function loadGraph(drugId) {
-    document.getElementById('graph-container').innerHTML = '<div class="graph-loading">加载相互作用图谱中...</div>';
+// 高亮节点
+function highlightNode(nodeId) {
+    network.selectNodes([nodeId]);
+    network.focus(nodeId, {
+        scale: 1.5,
+        animation: {
+            duration: 500,
+            easingFunction: 'easeInOutQuad'
+        }
+    });
+}
 
-    // 清除聚类记录
+// 显示基因/蛋白质详细信息
+function showGeneProteinDetails(node) {
+    const container = document.getElementById('interactionsList');
+    const detailsTitle = document.getElementById('details-title');
+
+    const isTarget = node.group === 'target_gene' || node.group === 'target_protein';
+    const typeIcon = node.group.includes('gene') ? '🧬' : '⚛️';
+    const typeName = node.group.includes('gene') ? '基因' : '蛋白质';
+    const typeColor = node.group.includes('gene') ? '#4caf50' : '#ff9800';
+
+    // 更新标题
+    if (detailsTitle) {
+        detailsTitle.textContent = typeName + '详情';
+    }
+
+    // 解析标题中的信息
+    let titleInfo = node.title || '';
+    let dbMatch = titleInfo.match(/Database: ([^\n]+)/);
+    let idMatch = titleInfo.match(/ID: ([^\n]+)/);
+    let typeMatch = titleInfo.match(/Type: ([^\n]+)/);
+
+    let xrefInfo = '';
+    if (dbMatch && idMatch) {
+        xrefInfo = `
+            <div class="info-item" style="margin-top: 10px;">
+                <span class="label" style="width: 70px;">数据库:</span>
+                <span class="value">${dbMatch[1]}</span>
+            </div>
+            <div class="info-item">
+                <span class="label" style="width: 70px;">ID:</span>
+                <span class="value" style="font-family: monospace;">${idMatch[1]}</span>
+            </div>
+        `;
+    }
+
+    const highlightStyle = isTarget ? 'border-left: 4px solid #00bcd4; background: #1e232f;' : '';
+    const starIcon = isTarget ? ' ⭐' : '';
+
+    container.innerHTML = `
+        <div class="interaction-item" style="${highlightStyle}">
+            <div class="drug-name" style="color: ${typeColor}; font-size: 16px; margin-bottom: 8px;">
+                ${typeIcon} ${node.label}${starIcon}
+            </div>
+            <div class="info-item">
+                <span class="label" style="width: 50px;">类型:</span>
+                <span class="value">${typeName} (${typeMatch ? typeMatch[1] : 'N/A'})</span>
+            </div>
+            ${xrefInfo}
+            <div class="info-item" style="margin-top: 10px;">
+                <span class="label" style="width: 50px;">通路:</span>
+                <span class="value" style="color: #9c27b0;">${document.querySelector('.graph-card .card-header h2')?.textContent.replace('通路图谱: ', '') || '未知'}</span>
+            </div>
+        </div>
+    `;
+
+    // 更新分子信息区域为基因/蛋白质信息
+    updateMolecularInfoForGene(node, typeName, dbMatch, idMatch);
+}
+
+// 为基因/蛋白质更新分子信息区域
+function updateMolecularInfoForGene(node, typeName, dbMatch, idMatch) {
+    const searchType = document.getElementById('searchType').value;
+
+    const molNameElement = document.getElementById('mol-name');
+    const molIdElement = document.getElementById('mol-drugbank-ids');
+    const molCasElement = document.getElementById('mol-cas');
+    const molUniElement = document.getElementById('mol-uni');
+    const molStateElement = document.getElementById('mol-state');
+    const molGroupsElement = document.getElementById('mol-groups');
+    const molDescElement = document.getElementById('mol-description');
+    const molIdLabel = document.getElementById('mol-id-label');
+    const molecularTitle = document.getElementById('molecular-title');
+
+    if (searchType === 'gene') {
+        molecularTitle.textContent = '基因信息';
+        if (molIdLabel) molIdLabel.textContent = '基因类型:';
+    } else if (searchType === 'protein') {
+        molecularTitle.textContent = '蛋白质信息';
+        if (molIdLabel) molIdLabel.textContent = '蛋白质类型:';
+    }
+
+    if (molNameElement) molNameElement.textContent = node.label;
+    if (molIdElement) molIdElement.textContent = typeName;
+    if (molCasElement) molCasElement.textContent = '—';
+    if (molUniElement) molUniElement.textContent = '—';
+    if (molStateElement) molStateElement.textContent = '—';
+    if (molGroupsElement) molGroupsElement.textContent = '—';
+
+    if (molDescElement) {
+        const p = molDescElement.querySelector('p') || document.createElement('p');
+        let descText = `【${typeName}信息】\n`;
+        if (dbMatch && idMatch) {
+            descText += `数据库: ${dbMatch[1]}\nID: ${idMatch[1]}`;
+        } else {
+            descText += `位于通路 ${document.querySelector('.graph-card .card-header h2')?.textContent.replace('通路图谱: ', '') || '未知'}`;
+        }
+        p.textContent = descText;
+        p.style.whiteSpace = 'pre-line';
+        p.style.color = searchType === 'gene' ? '#4caf50' : '#ff9800';
+        if (!molDescElement.querySelector('p')) molDescElement.appendChild(p);
+    }
+}
+
+// 清空分子信息（基因/蛋白质版本）
+function clearMolecularInfoForGene() {
+    const searchType = document.getElementById('searchType').value;
+
+    document.getElementById('mol-name').textContent = '-';
+    document.getElementById('mol-drugbank-ids').textContent = '-';
+    document.getElementById('mol-cas').textContent = '-';
+    document.getElementById('mol-uni').textContent = '-';
+    document.getElementById('mol-state').textContent = '-';
+    document.getElementById('mol-groups').textContent = '-';
+
+    const descElement = document.getElementById('mol-description');
+    if (descElement) {
+        const p = descElement.querySelector('p') || document.createElement('p');
+        if (searchType === 'gene') {
+            p.textContent = '基因信息请点击图谱中的基因节点查看';
+        } else {
+            p.textContent = '蛋白质信息请点击图谱中的蛋白质节点查看';
+        }
+        p.style.whiteSpace = 'normal';
+        p.style.color = '#8a8f99';
+        if (!descElement.querySelector('p')) descElement.appendChild(p);
+    }
+}
+
+// 加载药物图谱
+function loadDrugGraph(drugId) {
+    if (!drugId) {
+        console.error('药物ID为空');
+        showNotification('无效的药物ID');
+        return;
+    }
+
+    document.getElementById('graph-container').innerHTML = '<div class="graph-loading">加载药物相互作用图谱中...</div>';
+
     clusteredNodes.clear();
     clusterInfo = {
         clusterId: null,
@@ -660,48 +1060,52 @@ function loadGraph(drugId) {
     };
 
     fetch(`/api/graph/${drugId}`)
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.error) {
                 document.getElementById('graph-container').innerHTML = `<div class="graph-error">错误: ${data.error}</div>`;
+                showNotification(data.error);
                 return;
             }
 
-            // 重新初始化图谱
             initGraph();
 
-            // 清空数据
             nodes.clear();
             edges.clear();
 
-            // 添加节点
             if (data.nodes && data.nodes.length > 0) {
                 nodes.add(data.nodes);
             }
 
-            // 添加边
             if (data.edges && data.edges.length > 0) {
                 edges.add(data.edges);
             }
 
-            // 更新标题
             const graphHeader = document.querySelector('.graph-card .card-header h2');
             if (graphHeader) {
                 if (data.displayed_interactions > 0) {
-                    graphHeader.innerHTML = `药物相互作用图谱: ${data.drug_name} <span class="graph-stats">(显示 ${data.displayed_interactions}/${data.total_interactions} 个相互作用)</span>`;
+                    graphHeader.innerHTML = `药物相互作用图谱: ${data.drug_name} <span class="graph-stats">(显示 ${data.displayed_interactions} 个相互作用)</span>`;
                 } else {
                     graphHeader.innerHTML = `药物相互作用图谱: ${data.drug_name} <span class="graph-stats no-data">(无相互作用数据)</span>`;
                 }
             }
 
-            // 添加节点计数提示
-            addNodeCountHint(data);
+            addNodeCountHint({
+                nodes: data.nodes,
+                edges: data.edges,
+                has_more: data.has_more,
+                remaining_count: data.remaining_count
+            });
 
-            // 高亮中心节点
-            if (data.center_id) {
+            if (data.target_node_id) {
                 setTimeout(() => {
-                    network.selectNodes([data.center_id]);
-                    network.focus(data.center_id, {
+                    network.selectNodes([data.target_node_id]);
+                    network.focus(data.target_node_id, {
                         scale: 1.2,
                         animation: {
                             duration: 500,
@@ -711,20 +1115,19 @@ function loadGraph(drugId) {
                 }, 500);
             }
 
-            // 更新相互作用列表
             updateInteractionsList(data.edges);
         })
         .catch(error => {
-            console.error('Load graph error:', error);
-            document.getElementById('graph-container').innerHTML = '<div class="graph-error">加载图谱失败</div>';
+            console.error('Load drug graph error:', error);
+            document.getElementById('graph-container').innerHTML = '<div class="graph-error">加载图谱失败: ' + error.message + '</div>';
+            showNotification('加载图谱失败: ' + error.message);
         });
 }
 
-// 加载完整图谱
-function loadFullGraph(drugId) {
+// 加载完整药物图谱
+function loadFullDrugGraph(drugId) {
     document.getElementById('graph-container').innerHTML = '<div class="graph-loading">加载全部相互作用中...</div>';
 
-    // 清除聚类记录
     clusteredNodes.clear();
     clusterInfo = {
         clusterId: null,
@@ -759,26 +1162,267 @@ function loadFullGraph(drugId) {
         });
 }
 
+// 加载通路图谱
+function loadPathwayGraph(pathwayId, targetNodeLabel) {
+    if (!pathwayId) {
+        console.error('通路ID为空');
+        showNotification('无效的通路ID');
+        return;
+    }
+
+    console.log('加载通路图谱 - 通路ID:', pathwayId, '目标节点:', targetNodeLabel);
+    document.getElementById('graph-container').innerHTML = '<div class="graph-loading">加载通路图谱中...</div>';
+
+    let url = '/api/pathway/graph/' + encodeURIComponent(pathwayId);
+    if (targetNodeLabel) {
+        url += '?target=' + encodeURIComponent(targetNodeLabel);
+    }
+
+    fetch(url)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('HTTP error! status: ' + response.status);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                document.getElementById('graph-container').innerHTML = '<div class="graph-error">错误: ' + data.error + '</div>';
+                showNotification(data.error);
+                return;
+            }
+
+            initGraph();
+
+            nodes.clear();
+            edges.clear();
+
+            if (data.nodes && data.nodes.length > 0) {
+                // 修改目标节点的group为target_gene或target_protein
+                const modifiedNodes = data.nodes.map(node => {
+                    if (node.is_target) {
+                        if (node.type === 'gene') {
+                            node.group = 'target_gene';
+                        } else if (node.type === 'protein') {
+                            node.group = 'target_protein';
+                        }
+                    }
+                    return node;
+                });
+                nodes.add(modifiedNodes);
+            }
+
+            if (data.edges && data.edges.length > 0) {
+                edges.add(data.edges);
+            }
+
+            const graphHeader = document.querySelector('.graph-card .card-header h2');
+            if (graphHeader) {
+                graphHeader.innerHTML = '通路图谱: ' + data.pathway_name + ' <span class="graph-stats">(' + data.organism + ')</span>';
+            }
+
+            addNodeCountHint({
+                nodes: data.nodes,
+                edges: data.edges,
+                has_more: false,
+                gene_count: data.gene_count,
+                protein_count: data.protein_count
+            });
+
+            if (data.target_node_id) {
+                setTimeout(() => {
+                    network.selectNodes([data.target_node_id]);
+                    network.focus(data.target_node_id, {
+                        scale: 1.5,
+                        animation: {
+                            duration: 500,
+                            easingFunction: 'easeInOutQuad'
+                        }
+                    });
+
+                    const targetNode = nodes.get(data.target_node_id);
+                    if (targetNode) {
+                        showGeneProteinDetails(targetNode);
+                    }
+                }, 500);
+            } else if (data.center_id) {
+                setTimeout(() => {
+                    network.selectNodes([data.center_id]);
+                    network.focus(data.center_id, {
+                        scale: 1.2,
+                        animation: {
+                            duration: 500,
+                            easingFunction: 'easeInOutQuad'
+                        }
+                    });
+                }, 500);
+            }
+
+            updatePathwayNodeList(data.nodes, data.target_node_id);
+        })
+        .catch(error => {
+            console.error('Load pathway graph error:', error);
+            document.getElementById('graph-container').innerHTML = '<div class="graph-error">加载通路图谱失败: ' + error.message + '</div>';
+            showNotification('加载通路图谱失败: ' + error.message);
+        });
+}
+
 // 添加节点计数提示
 function addNodeCountHint(data) {
-    // 移除旧的提示
     if (nodeCountHint) {
         nodeCountHint.remove();
     }
 
-    // 创建新的提示
     nodeCountHint = document.createElement('div');
     nodeCountHint.className = 'node-count-hint';
-    nodeCountHint.innerHTML = `
-        <span>节点: ${data.nodes.length} | 边: ${data.edges.length}</span>
-        ${data.has_more ? `<span class="more-hint"> | 还有 ${data.remaining_count} 个未显示 (双击"更多"节点查看)</span>` : ''}
-        ${clusterInfo.clusterId ? `<span class="more-hint"> | 已聚类 (点击展开)</span>` : ''}
-    `;
 
+    let hintText = `<span>📊 节点: ${data.nodes.length} | 边: ${data.edges.length}</span>`;
+
+    if (data.gene_count !== undefined) {
+        hintText += `<span class="more-hint"> | 🧬基因: ${data.gene_count} ⚛️蛋白: ${data.protein_count}</span>`;
+    }
+
+    if (data.has_more) {
+        hintText += `<span class="more-hint"> | 还有 ${data.remaining_count} 个未显示 (双击"更多"节点查看)</span>`;
+    }
+
+    nodeCountHint.innerHTML = hintText;
     document.querySelector('.graph-card').appendChild(nodeCountHint);
 }
 
-// 加载分子信息
+// 更新药物相互作用列表
+function updateInteractionsList(edges) {
+    const container = document.getElementById('interactionsList');
+    const detailsTitle = document.getElementById('details-title');
+
+    if (detailsTitle) {
+        detailsTitle.textContent = '相互作用详情';
+    }
+
+    if (!edges || edges.length === 0) {
+        container.innerHTML = '<p class="placeholder">该药物暂无相互作用数据</p>';
+        return;
+    }
+
+    let html = '';
+    let displayedCount = 0;
+
+    edges.forEach(edge => {
+        if (edge.to && edge.to.toString().startsWith('more_')) {
+            return;
+        }
+
+        const targetNode = nodes.get(edge.to);
+        if (!targetNode) return;
+
+        if (clusteredNodes.has(targetNode.id)) {
+            return;
+        }
+
+        displayedCount++;
+        const drugName = targetNode.label || '未知药物';
+        const description = edge.title || '相互作用描述';
+
+        html += `
+            <div class="interaction-item">
+                <div class="drug-name">💊 ${drugName}</div>
+                <div class="description">${description}</div>
+            </div>
+        `;
+    });
+
+    if (displayedCount === 0) {
+        if (clusterInfo.clusterId) {
+            container.innerHTML = '<p class="placeholder">节点已被聚类，请点击聚类节点展开查看详细信息</p>';
+        } else {
+            container.innerHTML = '<p class="placeholder">该药物暂无相互作用数据</p>';
+        }
+    } else {
+        const statsHtml = `
+            <div class="interaction-item" style="background: #1a1f2b; border-bottom: 1px solid #2a2f3a;">
+                <div class="drug-name" style="color: #00bcd4;">📊 相互作用列表</div>
+                <div class="description">共 ${displayedCount} 个相互作用</div>
+            </div>
+        `;
+        container.innerHTML = statsHtml + html;
+    }
+}
+
+// 更新通路节点列表
+function updatePathwayNodeList(nodes, targetNodeId) {
+    const container = document.getElementById('interactionsList');
+    const detailsTitle = document.getElementById('details-title');
+    const searchType = document.getElementById('searchType').value;
+
+    if (detailsTitle) {
+        detailsTitle.textContent = searchType === 'gene' ? '基因列表' : '蛋白质列表';
+    }
+
+    if (!nodes || nodes.length <= 1) {
+        container.innerHTML = '<p class="placeholder">该通路暂无节点数据</p>';
+        return;
+    }
+
+    let html = '';
+    let geneCount = 0;
+    let proteinCount = 0;
+    let targetNode = null;
+
+    // 先找出目标节点
+    if (targetNodeId) {
+        targetNode = nodes.find(n => n.id === targetNodeId);
+    }
+
+    // 显示目标节点（如果有）
+    if (targetNode) {
+        const icon = targetNode.type === 'gene' ? '🧬' : '⚛️';
+        const color = targetNode.type === 'gene' ? '#4caf50' : '#ff9800';
+        html += `
+            <div class="interaction-item" style="border-left: 4px solid #00bcd4; background: #1e232f; margin-bottom: 10px;">
+                <div class="drug-name" style="color: ${color}; font-size: 15px;">
+                    ${icon} ${targetNode.label} ⭐
+                </div>
+                <div class="description" style="color: #00bcd4;">当前搜索的目标</div>
+            </div>
+        `;
+    }
+
+    // 显示其他节点
+    html += '<div style="margin-top: 10px;">';
+    nodes.forEach(node => {
+        if (node.group === 'pathway' || node.id === targetNodeId) return;
+
+        if (node.type === 'gene') {
+            geneCount++;
+            html += `
+                <div class="interaction-item">
+                    <div class="drug-name" style="color: #4caf50;">🧬 ${node.label}</div>
+                    <div class="description">基因节点</div>
+                </div>
+            `;
+        } else if (node.type === 'protein') {
+            proteinCount++;
+            html += `
+                <div class="interaction-item">
+                    <div class="drug-name" style="color: #ff9800;">⚛️ ${node.label}</div>
+                    <div class="description">蛋白质节点</div>
+                </div>
+            `;
+        }
+    });
+    html += '</div>';
+
+    const statsHtml = `
+        <div class="interaction-item" style="background: #1a1f2b; border-top: 1px solid #2a2f3a; margin-top: 10px;">
+            <div class="drug-name" style="color: #9c27b0;">📊 节点统计</div>
+            <div class="description">🧬 基因: ${geneCount} | ⚛️ 蛋白质: ${proteinCount}</div>
+        </div>
+    `;
+
+    container.innerHTML = statsHtml + html;
+}
+
+// 加载分子信息（药物专用）
 function loadMolecularInfo(drugId) {
     fetch(`/api/drug/${drugId}/molecular_info`)
         .then(response => response.json())
@@ -786,10 +1430,12 @@ function loadMolecularInfo(drugId) {
             if (data.error) return;
 
             document.getElementById('mol-name').textContent = data.name || '-';
+
             const drugbankElement = document.getElementById('mol-drugbank-ids');
             if (drugbankElement) {
                 drugbankElement.textContent = data.drugbank_ids ? data.drugbank_ids.join(', ') : '-';
             }
+
             document.getElementById('mol-cas').textContent = data.cas_number || '-';
             document.getElementById('mol-uni').textContent = data.uni || '-';
             document.getElementById('mol-state').textContent = data.state || '-';
@@ -799,13 +1445,20 @@ function loadMolecularInfo(drugId) {
             if (descElement) {
                 const p = descElement.querySelector('p') || document.createElement('p');
                 p.textContent = data.description || '暂无描述';
+                p.style.whiteSpace = 'normal';
+                p.style.color = '#e0e0e0';
                 if (!descElement.querySelector('p')) descElement.appendChild(p);
             }
+
+            // 更新标题
+            document.getElementById('molecular-title').textContent = '分子结构信息';
+            document.getElementById('details-title').textContent = '相互作用详情';
+            document.getElementById('mol-id-label').textContent = 'DrugBank IDs:';
         })
         .catch(error => console.error('Load molecular info error:', error));
 }
 
-// 更新当前选择信息
+// 更新当前选择信息（药物专用）
 function updateSelectedInfo(drugId) {
     fetch(`/api/drug/${drugId}`)
         .then(response => response.json())
@@ -821,7 +1474,7 @@ function updateSelectedInfo(drugId) {
 
             container.innerHTML = `
                 <div class="info-item"><span class="label">名称:</span><span class="value">${data.name || 'N/A'}</span></div>
-                <div class="info-item"><span class="label">DrugBank IDs:</span><span class="value">${drugbankIds}</span></div>
+                <div class="info-item"><span class="label">DrugBank IDs:</span><span class="value" style="word-break: break-all;">${drugbankIds}</span></div>
                 <div class="info-item"><span class="label">CAS号:</span><span class="value">${data.cas_number || 'N/A'}</span></div>
                 <div class="info-item"><span class="label">UNI:</span><span class="value">${data.uni || 'N/A'}</span></div>
                 <div class="info-item"><span class="label">状态:</span><span class="value">${data.state || 'N/A'}</span></div>
@@ -831,51 +1484,41 @@ function updateSelectedInfo(drugId) {
         .catch(error => console.error('Update selected info error:', error));
 }
 
-// 更新相互作用列表
-function updateInteractionsList(edges) {
-    const container = document.getElementById('interactionsList');
+// 更新通路信息到当前选择区域
+function updatePathwayInfo(pathwayId) {
+    fetch(`/api/pathway/${pathwayId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) return;
 
-    if (!edges || edges.length === 0) {
-        container.innerHTML = '<p class="placeholder">该药物暂无相互作用数据</p>';
-        return;
-    }
+            const container = document.querySelector('.selected-info .info-content');
 
-    let html = '';
-    let displayedCount = 0;
+            // 提取作者信息
+            let authorInfo = data.Author || 'N/A';
+            if (Array.isArray(authorInfo)) {
+                authorInfo = authorInfo.join(', ');
+            }
 
-    // 检查是否有聚类
-    const hasCluster = clusterInfo.clusterId !== null;
+            container.innerHTML = `
+                <div class="info-item"><span class="label">通路名称:</span><span class="value">${data.Name || 'N/A'}</span></div>
+                <div class="info-item"><span class="label">生物体:</span><span class="value">${data.Organism || 'N/A'}</span></div>
+                <div class="info-item"><span class="label">版本:</span><span class="value">${data.Version || 'N/A'}</span></div>
+                <div class="info-item"><span class="label">作者:</span><span class="value">${authorInfo}</span></div>
+                <div class="info-item"><span class="label">数据源:</span><span class="value">${data['Data-Source'] || 'WikiPathways'}</span></div>
+                <div class="info-item"><span class="label">修改时间:</span><span class="value">${data['Last-Modified'] || 'N/A'}</span></div>
+            `;
 
-    if (hasCluster) {
-        // 如果有聚类，显示提示
-        container.innerHTML = '<p class="placeholder">节点已被聚类，请点击聚类节点展开查看详细信息</p>';
-        return;
-    }
-
-    edges.forEach(edge => {
-        // 跳过"更多"节点
-        if (edge.to && edge.to.toString().startsWith('more_')) {
-            return;
-        }
-
-        const targetNode = nodes.get(edge.to);
-        if (!targetNode) return;
-
-        displayedCount++;
-        const drugName = targetNode.label || '未知药物';
-        const description = edge.title || '相互作用描述';
-
-        html += `
-            <div class="interaction-item">
-                <div class="drug-name">${drugName}</div>
-                <div class="description">${description}</div>
-            </div>
-        `;
-    });
-
-    if (displayedCount === 0) {
-        container.innerHTML = '<p class="placeholder">该药物暂无相互作用数据</p>';
-    } else {
-        container.innerHTML = html;
-    }
+            // 如果有描述信息，显示在分子信息区域
+            if (data.Comment && data.Comment.content) {
+                const descElement = document.getElementById('mol-description');
+                if (descElement) {
+                    const p = descElement.querySelector('p') || document.createElement('p');
+                    p.textContent = data.Comment.content.substring(0, 200) + '...';
+                    p.style.whiteSpace = 'normal';
+                    p.style.color = '#9c27b0';
+                    if (!descElement.querySelector('p')) descElement.appendChild(p);
+                }
+            }
+        })
+        .catch(error => console.error('Update pathway info error:', error));
 }
