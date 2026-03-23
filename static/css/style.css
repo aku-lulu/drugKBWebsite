@@ -32,27 +32,31 @@ body {
     z-index: 10;
 }
 
-/* Logo区域 */
+/* Logo区域 - 简洁专业版 */
 .logo {
-    padding: 20px 20px;
+    padding: 24px 20px;
     border-bottom: 1px solid #2a2f3a;
 }
 
 .logo h1 {
-    font-size: 26px; /* 适中 */
-    font-weight: 300;
-    letter-spacing: 1px;
+    font-size: 26px;
+    font-weight: 400;
+    letter-spacing: -0.5px;
+    color: #ffffff;
+    margin: 0;
 }
 
 .logo h1 span {
     color: #00bcd4;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .logo p {
-    font-size: 12px; /* 适中 */
-    color: #8a8f99;
-    margin-top: 3px;
+    font-size: 11px;
+    color: #6a6f7a;
+    margin-top: 6px;
+    font-weight: 300;
+    letter-spacing: 0.3px;
 }
 
 /* 搜索面板 */
@@ -151,11 +155,11 @@ body {
 }
 
 .result-item.selected {
-    background: #00bcd4;
+    background: #2a2f3a;  /* 深灰色背景，不是蓝色 */
 }
 
 .result-item.selected .name {
-    color: #000;
+    color: #e0e0e0;  /* 保持正常文字颜色 */
 }
 
 .result-item .name {
@@ -303,17 +307,25 @@ body {
     border-color: #00bcd4;
 }
 
-/* 信息卡片区域 - 适中高度 */
+/* 信息卡片区域 - 三列布局 */
 .info-cards {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 12px;
-    height: calc(45vh - 30px); /* 适中高度 */
-    min-height: 250px; /* 适中最小高度 */
+    height: calc(45vh - 30px);
+    min-height: 280px;
 }
 
-.molecular-card, .interactions-card {
+/* 分子结构卡片 */
+.molecular-card {
     height: 100%;
+    overflow-y: auto;
+}
+
+/* 详细信息卡片 - 缩小 */
+.interactions-card {
+    flex: 1;
+    min-height: 150px;
     overflow-y: auto;
 }
 
@@ -359,11 +371,12 @@ body {
 }
 
 .description p {
-    font-size: 12px; /* 适中 */
-    line-height: 1.4;
+    font-size: 12px;
+    line-height: 1.5;
     color: #c0c0c0;
-    max-height: 60px;
+    max-height: 100px;
     overflow-y: auto;
+    white-space: pre-line;
 }
 
 /* 相互作用列表 */
@@ -488,7 +501,7 @@ body {
 }
 
 .graph-stats.no-data {
-    color: #ff8888;
+    color: #8a8f99;  /* 改为和普通统计信息一样的灰色 */
 }
 
 /* 图谱加载状态 */
@@ -604,11 +617,25 @@ body {
 }
 
 .vis-network .vis-node {
-    font-size: 11px !important;
+    position: relative;
+}
+
+.vis-network .vis-node .vis-label {
+    display: inline-block;
+    margin-left: 5px;
 }
 
 .vis-network .vis-edge {
     font-size: 10px !important;
+}
+
+/* 为不同节点类型添加图标背景（可选，如果图标不显示可添加） */
+.vis-network .vis-node.drug {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2300bcd4"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>');
+    background-size: 16px;
+    background-repeat: no-repeat;
+    background-position: 5px center;
+    padding-left: 25px;
 }
 
 /* 自定义 vis.js 悬停提示样式 */
@@ -685,14 +712,19 @@ body {
 
 .result-item:hover {
     background: #2a2f3a;
+    cursor: pointer;
 }
 
 .result-item.selected {
-    background: #00bcd4;
+    background: #2a2f3a;  /* 覆盖之前的蓝色 */
 }
 
 .result-item.selected .name {
     color: #000;
+}
+
+.result-item.selected .type {
+    color: #8a8f99;  /* 保持正常颜色 */
 }
 
 .result-item .name {
@@ -764,4 +796,169 @@ body {
     flex: 1;
     font-size: 11px;
     word-break: break-word;
+}
+
+/* 二维分子式卡片 */
+.structure-card {
+    height: 100%;
+    overflow-y: auto;
+}
+
+.structure-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 10px;
+}
+
+.structure-placeholder {
+    text-align: center;
+    color: #4a4f5a;
+    font-size: 13px;
+    padding: 20px;
+}
+
+.structure-image-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.structure-image-container img {
+    max-width: 100%;
+    max-height: 180px;
+    width: auto;
+    height: auto;
+    border: 1px solid #2a2f3a;
+    border-radius: 6px;
+    background: #1e232f;
+    padding: 10px;
+    object-fit: contain;
+}
+
+/* 二维分子式卡片中的SMILES显示 */
+.structure-smiles {
+    margin-top: 8px;
+    font-size: 10px;
+    color: #8a8f99;
+    text-align: center;
+    word-break: break-all;
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 4px 8px;
+    background: #0a0e1a;
+    border-radius: 4px;
+    font-family: monospace;
+    cursor: help;
+}
+
+.structure-smiles:hover {
+    background: #1e232f;
+    color: #00bcd4;
+}
+
+/* 响应式调整 */
+@media (max-width: 1200px) {
+    .info-cards {
+        grid-template-columns: 1fr 1fr;  /* 中等屏幕时变为两列 */
+    }
+    .interactions-card {
+        grid-column: span 2;  /* 详细信息占满整行 */
+    }
+}
+/* 数据源标识 */
+.source-badge {
+    background: #1e232f;
+    color: #00bcd4;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    border: 1px solid #2a2f3a;
+}
+
+.source-badge.chembl {
+    background: #9c27b0;
+    color: white;
+}
+
+.source-badge.drugbank {
+    background: #00bcd4;
+    color: black;
+}
+
+.source-badge.wikipathways {
+    background: #ff9800;
+    color: black;
+}
+/* 知识图谱图例 - 放在标题下方 */
+.graph-legend {
+    margin: 8px 12px 0 12px;
+    padding: 8px 12px;
+    background: rgba(17, 21, 32, 0.9);
+    border-radius: 6px;
+    border: 1px solid #2a2f3a;
+    font-size: 11px;
+    display: inline-block;
+    z-index: 10;
+}
+
+.legend-title {
+    color: #00bcd4;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    padding-bottom: 3px;
+    border-bottom: 1px solid #2a2f3a;
+    text-align: left;
+}
+
+.legend-items {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: #e0e0e0;
+}
+
+.legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    display: inline-block;
+}
+
+/* 目标节点样式 */
+.legend-color[style*="border"] {
+    border-radius: 50%;
+    width: 10px;
+    height: 10px;
+    background: #ffffff;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+    .graph-legend {
+        margin: 6px 10px;
+        padding: 6px 10px;
+    }
+    .legend-items {
+        gap: 8px;
+    }
+    .legend-item {
+        font-size: 9px;
+        gap: 4px;
+    }
 }

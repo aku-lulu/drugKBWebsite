@@ -5,6 +5,11 @@ import json
 from bson import json_util
 from dotenv import load_dotenv
 import os
+import pubchempy as pcp
+from rdkit import Chem
+from rdkit.Chem import Draw
+import io
+import base64
 
 load_dotenv()
 
@@ -13,29 +18,49 @@ app = Flask(__name__)
 # MongoDB连接
 client = MongoClient(os.getenv('MONGODB_URI', 'mongodb://localhost:27017/'))
 
-# drugbank数据在pharmrg数据库的drug_interactions集合中
+# drugbank数据
 db_pharmrg = client['pharmrg']
 drug_collection = db_pharmrg['drug_interactions']
 
-# wikipathway数据在test数据库的source_wikipathway集合中
+# wikipathway数据
 db_test = client['test']
 wikipathway_collection = db_test['source_wikipathway']
 
+# chembl数据
+db_chembl = client['drugkb']
+chembl_drugs = db_chembl['drugs']
+chembl_targets = db_chembl['targets']
+chembl_relationships = db_chembl['relationships']
+
 
 def parse_json(data):
-    """将MongoDB数据转换为JSON可序列化格式"""
     return json.loads(json_util.dumps(data))
+
+
+def get_smiles_from_pubchem(drug_name):
+    """从PubChem获取SMILES"""
+    try:
+        print(f"查询PubChem: {drug_name}")
+        compounds = pcp.get_compounds(drug_name, 'name')
+        if compounds and len(compounds) > 0:
+            smiles = compounds[0].canonical_smiles
+            if smiles:
+                print(f"获取SMILES成功: {smiles[:50]}...")
+                return smiles
+        return None
+    except Exception as e:
+        print(f"PubChem查询出错: {e}")
+        return None
 
 
 @app.route('/')
 def index():
-    """主页"""
     return render_template('index.html')
 
 
+# ========== 搜索建议 ==========
 @app.route('/api/suggestions')
 def get_suggestions():
-    """获取搜索建议"""
     query = request.args.get('q', '').strip()
     search_type = request.args.get('type', 'drug')
 
@@ -43,148 +68,131 @@ def get_suggestions():
         return jsonify([])
 
     suggestions = []
-    seen_items = set()
+    seen = set()
 
     if search_type == 'drug':
-        # 搜索药物 - DrugBank
-        print(f"搜索药物: {query} 在 pharmrg.drug_interactions 中")
-
-        # 按名称搜索
-        name_matches = drug_collection.find({
+        drugs = list(drug_collection.find({
             'name': {'$regex': query, '$options': 'i'}
-        }).limit(10)
+        }).limit(5))
 
-        for drug in name_matches:
-            drug_name = drug.get('name', '')
-            if drug_name and drug_name not in seen_items:
-                seen_items.add(drug_name)
+        for drug in drugs:
+            name = drug.get('name', '')
+            if name and name not in seen:
+                seen.add(name)
                 suggestions.append({
                     'id': str(drug['_id']),
-                    'name': drug_name,
-                    'matched_field': 'name',
-                    'drugbank_ids': drug.get('drugbank_ids', [])[:3],
+                    'name': name,
                     'type': 'drug',
                     'source': 'drugbank',
                     'description': drug.get('description', '')[:50] + '...' if drug.get('description') else ''
                 })
 
-        # 按DrugBank ID搜索
-        id_matches = drug_collection.find({
-            'drugbank_ids': {'$regex': f'^{query}', '$options': 'i'}
-        }).limit(10)
+        drugs = list(chembl_drugs.find({
+            'name': {'$regex': query, '$options': 'i'}
+        }).limit(5))
 
-        for drug in id_matches:
-            drug_name = drug.get('name', '')
-            if drug_name not in seen_items:
-                matched_ids = [id for id in drug.get('drugbank_ids', [])
-                               if id.lower().startswith(query.lower())]
-                if matched_ids:
-                    seen_items.add(drug_name)
-                    suggestions.append({
-                        'id': str(drug['_id']),
-                        'name': drug_name,
-                        'matched_field': 'drugbank_id',
-                        'matched_value': matched_ids[0],
-                        'drugbank_ids': drug.get('drugbank_ids', [])[:3],
-                        'type': 'drug',
-                        'source': 'drugbank',
-                        'description': drug.get('description', '')[:50] + '...' if drug.get('description') else ''
-                    })
+        for drug in drugs:
+            name = drug.get('name', '')
+            chembl_id = drug.get('chembl_id', '')
+            if name and name not in seen:
+                seen.add(name)
+                suggestions.append({
+                    'id': chembl_id,
+                    'name': name,
+                    'type': 'drug',
+                    'source': 'chembl',
+                    'description': f"ChEMBL: {chembl_id}"
+                })
 
     elif search_type == 'gene':
-        # 搜索基因 - 从WikiPathways
-        print(f"搜索基因: {query} 在 test.source_wikipathway 中")
+        targets = list(chembl_targets.find({
+            'gene_symbols': {'$regex': query, '$options': 'i'}
+        }).limit(5))
 
-        pathways = wikipathway_collection.find({
+        for target in targets:
+            for gene in target.get('gene_symbols', []):
+                if gene and gene not in seen and query.lower() in gene.lower():
+                    seen.add(gene)
+                    suggestions.append({
+                        'id': target.get('chembl_id', ''),
+                        'name': gene,
+                        'full_name': target.get('name', ''),
+                        'type': 'gene',
+                        'source': 'chembl',
+                        'description': f"基因: {gene}"
+                    })
+
+        pathways = list(wikipathway_collection.find({
             'DataNode': {
                 '$elemMatch': {
                     'Type': 'GeneProduct',
                     'TextLabel': {'$regex': query, '$options': 'i'}
                 }
             }
-        }).limit(50)
+        }).limit(5))
 
         for pathway in pathways:
-            pathway_name = pathway.get('Name', 'Unknown Pathway')
-            pathway_id = str(pathway['_id'])
-
             for node in pathway.get('DataNode', []):
                 if node.get('Type') == 'GeneProduct':
-                    node_label = node.get('TextLabel', '')
-                    if query.lower() in node_label.lower():
-                        item_key = f"{node_label}_{pathway_id}"
-
-                        if item_key not in seen_items:
-                            seen_items.add(item_key)
-
-                            xref = node.get('Xref', {})
-                            xref_info = f"{xref.get('Database', '')}:{xref.get('ID', '')}" if xref else ''
-
-                            suggestions.append({
-                                'id': pathway_id,
-                                'node_id': f"{pathway_id}_{node_label}",
-                                'node_label': node_label,
-                                'name': node_label,
-                                'pathway_name': pathway_name,
-                                'organism': pathway.get('Organism', ''),
-                                'matched_field': 'gene',
-                                'matched_value': node_label,
-                                'type': 'gene',
-                                'source': 'wikipathways',
-                                'xref': xref_info,
-                                'description': f"在通路 {pathway_name} 中发现"
-                            })
+                    label = node.get('TextLabel', '')
+                    if label and label not in seen and query.lower() in label.lower():
+                        seen.add(label)
+                        suggestions.append({
+                            'id': str(pathway['_id']),
+                            'name': label,
+                            'type': 'gene',
+                            'source': 'wikipathways',
+                            'pathway_name': pathway.get('Name', ''),
+                            'description': f"在通路中发现"
+                        })
 
     elif search_type == 'protein':
-        # 搜索蛋白质 - 从WikiPathways
-        print(f"搜索蛋白质: {query} 在 test.source_wikipathway 中")
+        targets = list(chembl_targets.find({
+            'name': {'$regex': query, '$options': 'i'}
+        }).limit(5))
 
-        pathways = wikipathway_collection.find({
+        for target in targets:
+            name = target.get('name', '')
+            if name and name not in seen:
+                seen.add(name)
+                suggestions.append({
+                    'id': target.get('chembl_id', ''),
+                    'name': name,
+                    'type': 'protein',
+                    'source': 'chembl',
+                    'description': f"蛋白质靶点"
+                })
+
+        pathways = list(wikipathway_collection.find({
             'DataNode': {
                 '$elemMatch': {
                     'Type': 'Protein',
                     'TextLabel': {'$regex': query, '$options': 'i'}
                 }
             }
-        }).limit(50)
+        }).limit(5))
 
         for pathway in pathways:
-            pathway_name = pathway.get('Name', 'Unknown Pathway')
-            pathway_id = str(pathway['_id'])
-
             for node in pathway.get('DataNode', []):
                 if node.get('Type') == 'Protein':
-                    node_label = node.get('TextLabel', '')
-                    if query.lower() in node_label.lower():
-                        item_key = f"{node_label}_{pathway_id}"
-
-                        if item_key not in seen_items:
-                            seen_items.add(item_key)
-
-                            xref = node.get('Xref', {})
-                            xref_info = f"{xref.get('Database', '')}:{xref.get('ID', '')}" if xref else ''
-
-                            suggestions.append({
-                                'id': pathway_id,
-                                'node_id': f"{pathway_id}_{node_label}",
-                                'node_label': node_label,
-                                'name': node_label,
-                                'pathway_name': pathway_name,
-                                'organism': pathway.get('Organism', ''),
-                                'matched_field': 'protein',
-                                'matched_value': node_label,
-                                'type': 'protein',
-                                'source': 'wikipathways',
-                                'xref': xref_info,
-                                'description': f"在通路 {pathway_name} 中发现"
-                            })
+                    label = node.get('TextLabel', '')
+                    if label and label not in seen and query.lower() in label.lower():
+                        seen.add(label)
+                        suggestions.append({
+                            'id': str(pathway['_id']),
+                            'name': label,
+                            'type': 'protein',
+                            'source': 'wikipathways',
+                            'pathway_name': pathway.get('Name', ''),
+                            'description': f"在通路中发现"
+                        })
 
     return jsonify(suggestions[:15])
 
 
+# ========== 执行搜索 ==========
 @app.route('/api/search')
 def search():
-    """执行搜索 - 返回所有匹配结果"""
     search_type = request.args.get('type', 'drug')
     query = request.args.get('q', '').strip()
 
@@ -192,7 +200,7 @@ def search():
         return jsonify([])
 
     results = []
-    seen_items = set()
+    seen = set()
 
     if search_type == 'drug':
         drugs = list(drug_collection.find({
@@ -200,22 +208,62 @@ def search():
                 {'name': {'$regex': query, '$options': 'i'}},
                 {'drugbank_ids': {'$regex': query, '$options': 'i'}}
             ]
-        }).limit(30))
+        }).limit(20))
 
         for drug in drugs:
-            drug_name = drug.get('name', 'Unknown')
-            if drug_name not in seen_items:
-                seen_items.add(drug_name)
+            name = drug.get('name', 'Unknown')
+            if name not in seen:
+                seen.add(name)
                 results.append({
                     'id': str(drug['_id']),
-                    'name': drug_name,
+                    'name': name,
                     'drugbank_ids': drug.get('drugbank_ids', []),
                     'type': 'drug',
                     'source': 'drugbank',
                     'description': drug.get('description', '')[:100] + '...' if drug.get('description') else ''
                 })
 
+        drugs = list(chembl_drugs.find({
+            '$or': [
+                {'name': {'$regex': query, '$options': 'i'}},
+                {'chembl_id': {'$regex': query, '$options': 'i'}}
+            ]
+        }).limit(20))
+
+        for drug in drugs:
+            name = drug.get('name', '')
+            chembl_id = drug.get('chembl_id', '')
+            if name and name not in seen:
+                seen.add(name)
+                results.append({
+                    'id': chembl_id,
+                    'name': name,
+                    'chembl_id': chembl_id,
+                    'type': 'drug',
+                    'source': 'chembl',
+                    'max_phase': drug.get('basic_info', {}).get('max_phase'),
+                    'description': f"ChEMBL药物"
+                })
+
     elif search_type == 'gene':
+        targets = list(chembl_targets.find({
+            'gene_symbols': {'$regex': query, '$options': 'i'}
+        }).limit(20))
+
+        for target in targets:
+            for gene in target.get('gene_symbols', []):
+                if gene and gene not in seen and query.lower() in gene.lower():
+                    seen.add(gene)
+                    results.append({
+                        'id': target.get('chembl_id', ''),
+                        'name': gene,
+                        'full_name': target.get('name', ''),
+                        'type': 'gene',
+                        'source': 'chembl',
+                        'organism': target.get('organism', ''),
+                        'description': f"基因: {gene}"
+                    })
+
         pathways = list(wikipathway_collection.find({
             'DataNode': {
                 '$elemMatch': {
@@ -223,36 +271,41 @@ def search():
                     'TextLabel': {'$regex': query, '$options': 'i'}
                 }
             }
-        }).limit(50))
+        }).limit(20))
 
         for pathway in pathways:
-            pathway_name = pathway.get('Name', 'Unknown Pathway')
-            pathway_id = str(pathway['_id'])
-
             for node in pathway.get('DataNode', []):
                 if node.get('Type') == 'GeneProduct':
-                    node_label = node.get('TextLabel', '')
-                    if query.lower() in node_label.lower():
-                        item_key = f"{node_label}_{pathway_id}"
-
-                        if item_key not in seen_items:
-                            seen_items.add(item_key)
-                            xref = node.get('Xref', {})
-
-                            results.append({
-                                'id': pathway_id,
-                                'node_id': f"{pathway_id}_{node_label}",
-                                'node_label': node_label,
-                                'name': node_label,
-                                'pathway_name': pathway_name,
-                                'organism': pathway.get('Organism', ''),
-                                'type': 'gene',
-                                'source': 'wikipathways',
-                                'xref': f"{xref.get('Database', '')}:{xref.get('ID', '')}" if xref else '',
-                                'description': f"在通路 {pathway_name} 中发现"
-                            })
+                    label = node.get('TextLabel', '')
+                    if label and label not in seen and query.lower() in label.lower():
+                        seen.add(label)
+                        results.append({
+                            'id': str(pathway['_id']),
+                            'name': label,
+                            'type': 'gene',
+                            'source': 'wikipathways',
+                            'pathway_name': pathway.get('Name', ''),
+                            'description': f"在通路 {pathway.get('Name', '')} 中"
+                        })
 
     elif search_type == 'protein':
+        targets = list(chembl_targets.find({
+            'name': {'$regex': query, '$options': 'i'}
+        }).limit(20))
+
+        for target in targets:
+            name = target.get('name', '')
+            if name and name not in seen:
+                seen.add(name)
+                results.append({
+                    'id': target.get('chembl_id', ''),
+                    'name': name,
+                    'type': 'protein',
+                    'source': 'chembl',
+                    'organism': target.get('organism', ''),
+                    'description': f"蛋白质靶点"
+                })
+
         pathways = list(wikipathway_collection.find({
             'DataNode': {
                 '$elemMatch': {
@@ -260,473 +313,460 @@ def search():
                     'TextLabel': {'$regex': query, '$options': 'i'}
                 }
             }
-        }).limit(50))
+        }).limit(20))
 
         for pathway in pathways:
-            pathway_name = pathway.get('Name', 'Unknown Pathway')
-            pathway_id = str(pathway['_id'])
-
             for node in pathway.get('DataNode', []):
                 if node.get('Type') == 'Protein':
-                    node_label = node.get('TextLabel', '')
-                    if query.lower() in node_label.lower():
-                        item_key = f"{node_label}_{pathway_id}"
-
-                        if item_key not in seen_items:
-                            seen_items.add(item_key)
-                            xref = node.get('Xref', {})
-
-                            results.append({
-                                'id': pathway_id,
-                                'node_id': f"{pathway_id}_{node_label}",
-                                'node_label': node_label,
-                                'name': node_label,
-                                'pathway_name': pathway_name,
-                                'organism': pathway.get('Organism', ''),
-                                'type': 'protein',
-                                'source': 'wikipathways',
-                                'xref': f"{xref.get('Database', '')}:{xref.get('ID', '')}" if xref else '',
-                                'description': f"在通路 {pathway_name} 中发现"
-                            })
+                    label = node.get('TextLabel', '')
+                    if label and label not in seen and query.lower() in label.lower():
+                        seen.add(label)
+                        results.append({
+                            'id': str(pathway['_id']),
+                            'name': label,
+                            'type': 'protein',
+                            'source': 'wikipathways',
+                            'pathway_name': pathway.get('Name', ''),
+                            'description': f"在通路 {pathway.get('Name', '')} 中"
+                        })
 
     return jsonify(results)
 
 
-@app.route('/api/pathway/<pathway_id>')
-def get_pathway(pathway_id):
-    """获取通路详情"""
+@app.route('/api/drug/<identifier>/structure')
+def get_drug_structure(identifier):
+    """获取药物的二维结构图像"""
     try:
-        pathway = None
+        drug_name = None
 
-        if ObjectId.is_valid(pathway_id):
-            pathway = wikipathway_collection.find_one({'_id': ObjectId(pathway_id)})
+        # 获取药物名称
+        if ObjectId.is_valid(identifier):
+            drug = drug_collection.find_one({'_id': ObjectId(identifier)})
+            if drug:
+                drug_name = drug.get('name', '')
 
-        if pathway:
-            return jsonify(parse_json(pathway))
+        if not drug_name:
+            drug = drug_collection.find_one({'drugbank_ids': identifier})
+            if drug:
+                drug_name = drug.get('name', '')
 
-        return jsonify({'error': 'Pathway not found'}), 404
+        if not drug_name:
+            drug = drug_collection.find_one({'name': identifier})
+            if drug:
+                drug_name = drug.get('name', '')
+
+        if not drug_name and identifier.startswith('CHEMBL'):
+            chembl_drug = chembl_drugs.find_one({'chembl_id': identifier})
+            if chembl_drug:
+                drug_name = chembl_drug.get('name', '')
+
+        if not drug_name:
+            return jsonify({'error': 'Drug not found'}), 404
+
+        print(f"正在获取分子结构: {drug_name}")
+
+        # 从 ChEMBL 数据库直接读取 SMILES
+        smiles = None
+        if identifier.startswith('CHEMBL'):
+            chembl_drug = chembl_drugs.find_one({'chembl_id': identifier})
+            if chembl_drug:
+                # 尝试多个可能存储 SMILES 的位置
+                if chembl_drug.get('structure', {}).get('smiles'):
+                    smiles = chembl_drug['structure']['smiles']
+                    print(f"从ChEMBL structure获取SMILES成功")
+                elif chembl_drug.get('properties', {}).get('smiles'):
+                    smiles = chembl_drug['properties']['smiles']
+                    print(f"从ChEMBL properties获取SMILES成功")
+
+        # 如果 ChEMBL 没有，从 DrugBank 获取
+        if not smiles and drug_name:
+            drugbank_drug = drug_collection.find_one({'name': drug_name})
+            if drugbank_drug and drugbank_drug.get('structure', {}).get('smiles'):
+                smiles = drugbank_drug['structure']['smiles']
+                print(f"从DrugBank获取SMILES成功")
+
+        # 如果都没有，使用 PubChem API
+        if not smiles:
+            try:
+                import requests
+                import urllib.parse
+
+                # 清理名称
+                import re
+                clean_name = re.sub(r'[^\w\s]', '', drug_name)
+                clean_name = re.sub(r'\s+', ' ', clean_name).strip()
+
+                # PubChem API - 使用 SMILES 直接返回
+                encoded = urllib.parse.quote(clean_name)
+                url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{encoded}/property/IsomericSMILES/JSON"
+
+                print(f"请求URL: {url}")
+                response = requests.get(url, timeout=10)
+                print(f"响应状态: {response.status_code}")
+
+                if response.status_code == 200:
+                    data = response.json()
+                    print(f"API返回数据: {data}")
+
+                    # 正确解析 PubChem 返回的数据
+                    if 'PropertyTable' in data and 'Properties' in data['PropertyTable']:
+                        props = data['PropertyTable']['Properties']
+                        if props and len(props) > 0:
+                            # 尝试多个可能的字段名
+                            smiles = props[0].get('IsomericSMILES')
+                            if not smiles:
+                                smiles = props[0].get('CanonicalSMILES')
+                            if not smiles:
+                                smiles = props[0].get('SMILES')
+                            if smiles:
+                                print(f"从PubChem API获取SMILES成功: {smiles[:50]}...")
+
+                # 如果上面的URL不行，尝试另一个PubChem API端点
+                if not smiles:
+                    url2 = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{encoded}/property/SMILES/JSON"
+                    response = requests.get(url2, timeout=10)
+                    if response.status_code == 200:
+                        data = response.json()
+                        if 'PropertyTable' in data and 'Properties' in data['PropertyTable']:
+                            props = data['PropertyTable']['Properties']
+                            if props and len(props) > 0:
+                                smiles = props[0].get('SMILES')
+                                if smiles:
+                                    print(f"从PubChem SMILES API获取成功")
+
+            except Exception as e:
+                print(f"PubChem API失败: {e}")
+
+        if not smiles:
+            return jsonify({'error': f'未找到 {drug_name} 的结构信息'}), 404
+
+        # 生成图像
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return jsonify({'error': 'Invalid SMILES'}), 400
+
+        img = Draw.MolToImage(mol, size=(300, 300))
+        img_buffer = io.BytesIO()
+        img.save(img_buffer, format='PNG')
+        img_base64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+
+        return jsonify({
+            'image': img_base64,
+            'smiles': smiles,
+            'name': drug_name
+        })
 
     except Exception as e:
-        print(f"Error in get_pathway: {str(e)}")
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+# ========== 分子信息路由 ==========
+@app.route('/api/drug/<identifier>/molecular_info')
+def get_molecular_info(identifier):
+    try:
+        if ObjectId.is_valid(identifier):
+            drug = drug_collection.find_one({'_id': ObjectId(identifier)})
+            if drug:
+                return jsonify({
+                    'name': drug.get('name', ''),
+                    'drugbank_ids': drug.get('drugbank_ids', []),
+                    'cas_number': drug.get('cas_number', 'N/A'),
+                    'uni': drug.get('uni', 'N/A'),
+                    'state': drug.get('state', 'N/A'),
+                    'groups': drug.get('groups', []),
+                    'description': drug.get('description', ''),
+                    'source': 'drugbank'
+                })
+
+        chembl_drug = chembl_drugs.find_one({'chembl_id': identifier})
+        if chembl_drug:
+            return jsonify({
+                'name': chembl_drug.get('name', ''),
+                'chembl_id': chembl_drug.get('chembl_id', ''),
+                'source': 'chembl',
+                'cas_number': 'N/A',
+                'uni': chembl_drug.get('properties', {}).get('full_molformula', 'N/A'),
+                'state': chembl_drug.get('basic_info', {}).get('max_phase', 'N/A'),
+                'groups': chembl_drug.get('basic_info', {}).get('molecule_type', 'N/A'),
+                'description': f"ChEMBL药物",
+                'basic_info': chembl_drug.get('basic_info', {}),
+                'properties': chembl_drug.get('properties', {})
+            })
+
+        return jsonify({'error': 'Not found'}), 404
+
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
-@app.route('/api/pathway/graph/<pathway_id>')
-def get_pathway_graph(pathway_id):
-    """获取通路的知识图谱数据 - 自动去重"""
-    try:
-        # 获取查询参数中的目标节点标签
-        target_node_label = request.args.get('target', '')
-
-        pathway = None
-
-        if ObjectId.is_valid(pathway_id):
-            pathway = wikipathway_collection.find_one({'_id': ObjectId(pathway_id)})
-
-        if not pathway:
-            return jsonify({'error': 'Pathway not found'}), 404
-
-        print(f"========== 构建通路图谱: {pathway.get('Name')} ==========")
-
-        nodes = []
-        edges = []
-        node_labels = set()  # 用于按标签去重
-        target_node_id = None
-
-        # 添加通路中心节点
-        pathway_id_str = str(pathway['_id'])
-        pathway_node = {
-            'id': pathway_id_str,
-            'label': pathway.get('Name', 'Unknown Pathway'),
-            'title': f"Pathway: {pathway.get('Name')}\nOrganism: {pathway.get('Organism')}\nVersion: {pathway.get('Version')}\nAuthor: {pathway.get('Author', 'N/A')}",
-            'group': 'pathway',
-            'type': 'pathway',
-            'value': 30,
-            'shape': 'box',
-            'color': {
-                'background': '#9c27b0',
-                'border': '#ffffff',
-                'highlight': {
-                    'background': '#7b1fa2',
-                    'border': '#ffffff'
-                }
-            }
-        }
-        nodes.append(pathway_node)
-        node_labels.add(pathway.get('Name', 'Unknown Pathway'))
-
-        # 获取DataNode数组
-        data_nodes = pathway.get('DataNode', [])
-
-        gene_count = 0
-        protein_count = 0
-
-        # 处理每个数据节点，自动去重
-        for idx, node in enumerate(data_nodes):
-            node_type = node.get('Type', 'Unknown')
-            node_label = node.get('TextLabel', '')
-
-            # 只处理 GeneProduct 和 Protein 类型
-            if node_type not in ['GeneProduct', 'Protein']:
-                continue
-
-            # 按标签去重
-            if node_label in node_labels:
-                continue
-
-            node_xref = node.get('Xref', {})
-
-            # 生成唯一节点ID
-            node_unique_id = f"{pathway_id_str}_{node_label}_{node_type}"
-
-            # 确定节点组和颜色
-            if node_type == 'GeneProduct':
-                group = 'gene'
-                base_color = '#4caf50'
-                display_type = 'gene'
-                gene_count += 1
-            else:  # Protein
-                group = 'protein'
-                base_color = '#ff9800'
-                display_type = 'protein'
-                protein_count += 1
-
-            # 检查是否是目标节点
-            is_target = target_node_label and node_label.lower() == target_node_label.lower()
-            if is_target:
-                target_node_id = node_unique_id
-                # 目标节点使用特殊颜色和大小
-                node_color = {
-                    'background': '#ffffff',
-                    'border': base_color,
-                    'highlight': {
-                        'background': '#ffffff',
-                        'border': '#00bcd4'
-                    }
-                }
-                node_size = 30
-                node_border_width = 4
-                node_group = f'target_{group}'
-            else:
-                node_color = {
-                    'background': base_color,
-                    'border': '#ffffff',
-                    'highlight': {
-                        'background': base_color,
-                        'border': '#00bcd4'
-                    }
-                }
-                node_size = 20
-                node_border_width = 2
-                node_group = group
-
-            # 创建节点
-            pathway_node = {
-                'id': node_unique_id,
-                'label': node_label,
-                'title': f"Type: {node_type}\nLabel: {node_label}\nDatabase: {node_xref.get('Database', 'N/A')}\nID: {node_xref.get('ID', 'N/A')}",
-                'group': node_group,
-                'type': display_type,
-                'value': node_size,
-                'borderWidth': node_border_width,
-                'color': node_color,
-                'is_target': is_target
-            }
-
-            nodes.append(pathway_node)
-            node_labels.add(node_label)
-
-            # 添加从通路到节点的边
-            edge = {
-                'id': f"edge_{pathway_id_str}_{node_unique_id}",
-                'from': pathway_id_str,
-                'to': node_unique_id,
-                'title': f"Part of {pathway.get('Name')}",
-                'width': 2,
-                'color': '#9c27b0',
-                'dashes': False
-            }
-            edges.append(edge)
-
-        # 如果没有找到目标节点，但提供了目标标签，尝试查找近似匹配
-        if target_node_label and not target_node_id:
-            for node in nodes:
-                if node['type'] in ['gene', 'protein'] and target_node_label.lower() in node['label'].lower():
-                    target_node_id = node['id']
-                    # 更新节点样式
-                    node['borderWidth'] = 4
-                    node['color']['border'] = '#ffffff'
-                    node['color']['background'] = '#00bcd4'
-                    node['is_target'] = True
-                    node['group'] = f"target_{node['type']}"
-                    break
-
-        response_data = {
-            'nodes': nodes,
-            'edges': edges,
-            'center_id': pathway_id_str,
-            'target_node_id': target_node_id,
-            'pathway_name': pathway.get('Name', 'Unknown'),
-            'organism': pathway.get('Organism', 'Unknown'),
-            'gene_count': gene_count,
-            'protein_count': protein_count,
-            'type': 'pathway'
-        }
-
-        print(f"图谱构建完成: {len(nodes)} 个节点")
-        return jsonify(response_data)
-
-    except Exception as e:
-        print(f"Error in get_pathway_graph: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/pathway/node/<pathway_id>/<path:node_label>')
-def get_pathway_node_details(pathway_id, node_label):
-    """获取通路中特定节点的详细信息"""
-    try:
-        pathway = None
-
-        if ObjectId.is_valid(pathway_id):
-            pathway = wikipathway_collection.find_one({'_id': ObjectId(pathway_id)})
-
-        if not pathway:
-            return jsonify({'error': 'Pathway not found'}), 404
-
-        # 查找匹配的节点
-        target_node = None
-        for node in pathway.get('DataNode', []):
-            if node.get('TextLabel', '') == node_label:
-                target_node = node
-                break
-
-        if not target_node:
-            return jsonify({'error': 'Node not found'}), 404
-
-        node_type = target_node.get('Type', 'Unknown')
-        xref = target_node.get('Xref', {})
-
-        # 构建节点详细信息
-        node_details = {
-            'name': target_node.get('TextLabel', ''),
-            'type': 'gene' if node_type == 'GeneProduct' else 'protein',
-            'node_type': node_type,
-            'pathway_name': pathway.get('Name', ''),
-            'organism': pathway.get('Organism', ''),
-            'xref_database': xref.get('Database', 'N/A'),
-            'xref_id': xref.get('ID', 'N/A'),
-            'description': f"位于通路 {pathway.get('Name')} 中"
-        }
-
-        return jsonify(node_details)
-
-    except Exception as e:
-        print(f"Error in get_pathway_node_details: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-
+# ========== 药物详情路由（当前选择用） ==========
 @app.route('/api/drug/<identifier>')
 def get_drug(identifier):
     """获取单个药物详情"""
     try:
-        drug = None
-
         if ObjectId.is_valid(identifier):
             drug = drug_collection.find_one({'_id': ObjectId(identifier)})
+            if drug:
+                return jsonify({
+                    'name': drug.get('name', ''),
+                    'drugbank_ids': drug.get('drugbank_ids', []),
+                    'cas_number': drug.get('cas_number', 'N/A'),
+                    'uni': drug.get('uni', 'N/A'),
+                    'state': drug.get('state', 'N/A'),
+                    'groups': drug.get('groups', []),
+                    'description': drug.get('description', ''),
+                    'source': 'drugbank'
+                })
 
-        if not drug:
-            drug = drug_collection.find_one({'drugbank_ids': identifier})
-
-        if not drug:
-            drug = drug_collection.find_one({'name': identifier})
-
+        drug = drug_collection.find_one({'drugbank_ids': identifier})
         if drug:
-            return jsonify(parse_json(drug))
-
-        return jsonify({'error': 'Drug not found'}), 404
-
-    except Exception as e:
-        print(f"Error in get_drug: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/graph/<identifier>')
-def get_drug_graph(identifier):
-    """获取药物的知识图谱数据 - 自动去重"""
-    try:
-        target_drug = None
-
-        if ObjectId.is_valid(identifier):
-            target_drug = drug_collection.find_one({'_id': ObjectId(identifier)})
-
-        if not target_drug:
-            target_drug = drug_collection.find_one({'drugbank_ids': identifier})
-
-        if not target_drug:
-            target_drug = drug_collection.find_one({'name': identifier})
-
-        if not target_drug:
-            return jsonify({'error': 'Drug not found'}), 404
-
-        print(f"========== 构建药物图谱: {target_drug.get('name')} ==========")
-
-        show_full = request.args.get('full', 'false').lower() == 'true'
-
-        nodes = []
-        edges = []
-        drug_names = set()  # 用于按名称去重
-
-        center_id = str(target_drug['_id'])
-        center_node = {
-            'id': center_id,
-            'label': target_drug.get('name', 'Unknown'),
-            'title': f"名称: {target_drug.get('name')}\nID: {target_drug.get('_id')}",
-            'group': 'center',
-            'type': 'drug',
-            'value': 30,
-            'is_target': True
-        }
-        nodes.append(center_node)
-        drug_names.add(target_drug.get('name', 'Unknown'))
-
-        interacts_with = target_drug.get('interacts_with', [])
-        total_interactions = len(interacts_with)
-
-        # 按drugbank_id去重
-        unique_interactions = {}
-        for interaction in interacts_with:
-            drugbank_id = interaction.get('drugbank_id')
-            if drugbank_id and drugbank_id not in unique_interactions:
-                unique_interactions[drugbank_id] = interaction
-
-        MAX_NODES = 15
-        if show_full:
-            MAX_NODES = len(unique_interactions)
-
-        interactions_to_show = list(unique_interactions.values())[:MAX_NODES]
-
-        for idx, interaction in enumerate(interactions_to_show):
-            drugbank_id = interaction.get('drugbank_id')
-            description = interaction.get('description', '相互作用描述')
-
-            if not drugbank_id:
-                continue
-
-            related_drug = drug_collection.find_one({'drugbank_ids': drugbank_id})
-
-            if related_drug:
-                node_id = str(related_drug['_id'])
-                node_name = related_drug.get('name', drugbank_id)
-
-                # 按名称去重
-                if node_name not in drug_names:
-                    node = {
-                        'id': node_id,
-                        'label': node_name,
-                        'title': f"名称: {node_name}\n相互作用: {description}",
-                        'group': 'related',
-                        'type': 'drug',
-                        'value': 20,
-                        'is_target': False
-                    }
-                    nodes.append(node)
-                    drug_names.add(node_name)
-
-                    # 添加边
-                    edge = {
-                        'id': f"edge_{center_id}_{node_id}_{idx}",
-                        'from': center_id,
-                        'to': node_id,
-                        'title': description,
-                        'width': 2,
-                        'color': '#00bcd4'
-                    }
-                    edges.append(edge)
-
-        remaining = len(unique_interactions) - len(interactions_to_show)
-        if not show_full and remaining > 0:
-            more_node_id = f"more_{center_id}"
-            more_node = {
-                'id': more_node_id,
-                'label': f"+{remaining} 更多",
-                'title': f"还有 {remaining} 个未显示的相互作用关系\n双击查看全部",
-                'group': 'more',
-                'type': 'more',
-                'value': 10,
-                'shape': 'box',
-                'color': {
-                    'background': '#4a4f5a',
-                    'border': '#8a8f99',
-                    'highlight': {
-                        'background': '#5a5f6a',
-                        'border': '#00bcd4'
-                    }
-                }
-            }
-            nodes.append(more_node)
-
-            more_edge = {
-                'id': f"edge_{center_id}_more",
-                'from': center_id,
-                'to': more_node_id,
-                'title': f"点击查看全部 {len(unique_interactions)} 个相互作用",
-                'width': 1,
-                'color': '#8a8f99',
-                'dashes': True
-            }
-            edges.append(more_edge)
-
-        response_data = {
-            'nodes': nodes,
-            'edges': edges,
-            'center_id': center_id,
-            'target_node_id': center_id,
-            'drug_name': target_drug.get('name', 'Unknown'),
-            'has_more': not show_full and remaining > 0,
-            'remaining_count': remaining,
-            'type': 'drug'
-        }
-
-        print(f"图谱构建完成: {len(nodes)} 个节点")
-        return jsonify(response_data)
-
-    except Exception as e:
-        print(f"Error in get_drug_graph: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/drug/<identifier>/molecular_info')
-def get_molecular_info(identifier):
-    """获取分子结构信息"""
-    try:
-        drug = None
-
-        if ObjectId.is_valid(identifier):
-            drug = drug_collection.find_one({'_id': ObjectId(identifier)})
-
-        if not drug:
-            drug = drug_collection.find_one({'drugbank_ids': identifier})
-
-        if not drug:
-            drug = drug_collection.find_one({'name': identifier})
-
-        if drug:
-            molecular_info = {
+            return jsonify({
                 'name': drug.get('name', ''),
                 'drugbank_ids': drug.get('drugbank_ids', []),
                 'cas_number': drug.get('cas_number', 'N/A'),
                 'uni': drug.get('uni', 'N/A'),
                 'state': drug.get('state', 'N/A'),
                 'groups': drug.get('groups', []),
-                'food_interactions': drug.get('food_interactions', []),
-                'description': drug.get('description', '')
-            }
-            return jsonify(molecular_info)
+                'description': drug.get('description', ''),
+                'source': 'drugbank'
+            })
+
+        drug = drug_collection.find_one({'name': identifier})
+        if drug:
+            return jsonify({
+                'name': drug.get('name', ''),
+                'drugbank_ids': drug.get('drugbank_ids', []),
+                'cas_number': drug.get('cas_number', 'N/A'),
+                'uni': drug.get('uni', 'N/A'),
+                'state': drug.get('state', 'N/A'),
+                'groups': drug.get('groups', []),
+                'description': drug.get('description', ''),
+                'source': 'drugbank'
+            })
+
+        chembl_drug = chembl_drugs.find_one({'chembl_id': identifier})
+        if chembl_drug:
+            return jsonify({
+                'name': chembl_drug.get('name', ''),
+                'chembl_id': chembl_drug.get('chembl_id', ''),
+                'source': 'chembl',
+                'cas_number': 'N/A',
+                'uni': chembl_drug.get('properties', {}).get('full_molformula', 'N/A'),
+                'state': chembl_drug.get('basic_info', {}).get('max_phase', 'N/A'),
+                'groups': chembl_drug.get('basic_info', {}).get('molecule_type', 'N/A'),
+                'description': f"ChEMBL药物",
+                'basic_info': chembl_drug.get('basic_info', {}),
+                'properties': chembl_drug.get('properties', {})
+            })
 
         return jsonify({'error': 'Not found'}), 404
 
     except Exception as e:
-        print(f"Error in get_molecular_info: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ========== ChEMBL图谱 ==========
+@app.route('/api/chembl/graph/<chembl_id>')
+def get_chembl_graph(chembl_id):
+    try:
+        item = chembl_drugs.find_one({'chembl_id': chembl_id})
+        item_type = 'drug'
+        item_name = chembl_id
+
+        if not item:
+            item = chembl_targets.find_one({'chembl_id': chembl_id})
+            if item:
+                item_type = 'gene' if item.get('gene_symbols') else 'protein'
+                item_name = item.get('name', chembl_id)
+
+        if not item:
+            return jsonify({'error': '未找到'}), 404
+
+        relationships = list(chembl_relationships.find({
+            '$or': [
+                {'source_id': chembl_id},
+                {'target_id': chembl_id}
+            ]
+        }).limit(30))
+
+        nodes = [{
+            'id': chembl_id,
+            'label': item_name,
+            'group': 'center',
+            'type': item_type,
+            'icon': '💊' if item_type == 'drug' else ('🧬' if item_type == 'gene' else '⚛️')
+        }]
+        node_ids = {chembl_id}
+        edges = []
+
+        for rel in relationships:
+            other_id = rel['target_id'] if rel['source_id'] == chembl_id else rel['source_id']
+            other_type = rel['target_type'] if rel['source_id'] == chembl_id else rel['source_type']
+
+            if other_id not in node_ids:
+                other_info = None
+                other_name = other_id
+
+                if other_type == 'DRUG':
+                    other_info = chembl_drugs.find_one({'chembl_id': other_id})
+                else:
+                    other_info = chembl_targets.find_one({'chembl_id': other_id})
+
+                if other_info:
+                    other_name = other_info.get('name', other_id)
+
+                node_group = 'drug' if other_type == 'DRUG' else (
+                    'gene' if other_info and other_info.get('gene_symbols') else 'protein')
+                node_icon = '💊' if node_group == 'drug' else ('🧬' if node_group == 'gene' else '⚛️')
+
+                nodes.append({
+                    'id': other_id,
+                    'label': other_name,
+                    'group': node_group,
+                    'type': node_group,
+                    'icon': node_icon
+                })
+                node_ids.add(other_id)
+
+            edges.append({
+                'from': chembl_id,
+                'to': other_id,
+                'title': rel.get('mechanism', '相互作用')
+            })
+
+        return jsonify({
+            'nodes': nodes,
+            'edges': edges,
+            'center_id': chembl_id,
+            'drug_name': item_name,
+            'type': item_type
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ========== DrugBank图谱 ==========
+@app.route('/api/graph/<identifier>')
+def get_drug_graph(identifier):
+    try:
+        target_drug = None
+
+        if ObjectId.is_valid(identifier):
+            target_drug = drug_collection.find_one({'_id': ObjectId(identifier)})
+        if not target_drug:
+            target_drug = drug_collection.find_one({'drugbank_ids': identifier})
+        if not target_drug:
+            target_drug = drug_collection.find_one({'name': identifier})
+
+        if not target_drug:
+            return jsonify({'error': 'Drug not found'}), 404
+
+        nodes = [{
+            'id': identifier,
+            'label': target_drug.get('name', 'Unknown'),
+            'group': 'center',
+            'type': 'drug',
+            'icon': '💊'
+        }]
+        node_ids = {identifier}
+        edges = []
+
+        for interaction in target_drug.get('interacts_with', [])[:15]:
+            drugbank_id = interaction.get('drugbank_id')
+            if not drugbank_id:
+                continue
+
+            related = drug_collection.find_one({'drugbank_ids': drugbank_id})
+            if related:
+                node_id = str(related['_id'])
+                if node_id not in node_ids:
+                    nodes.append({
+                        'id': node_id,
+                        'label': related.get('name', drugbank_id),
+                        'group': 'related',
+                        'type': 'drug',
+                        'icon': '💊'
+                    })
+                    node_ids.add(node_id)
+
+                edges.append({
+                    'from': identifier,
+                    'to': node_id,
+                    'title': interaction.get('description', '相互作用')
+                })
+
+        return jsonify({
+            'nodes': nodes,
+            'edges': edges,
+            'center_id': identifier,
+            'drug_name': target_drug.get('name', 'Unknown'),
+            'type': 'drug'
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ========== 通路图谱 ==========
+@app.route('/api/pathway/graph/<pathway_id>')
+def get_pathway_graph(pathway_id):
+    try:
+        if not ObjectId.is_valid(pathway_id):
+            return jsonify({'error': 'Invalid ID'}), 400
+
+        pathway = wikipathway_collection.find_one({'_id': ObjectId(pathway_id)})
+        if not pathway:
+            return jsonify({'error': 'Pathway not found'}), 404
+
+        nodes = [{
+            'id': pathway_id,
+            'label': pathway.get('Name', 'Unknown'),
+            'group': 'pathway',
+            'type': 'pathway',
+            'icon': '🔬'
+        }]
+        node_labels = {pathway.get('Name', '')}
+        edges = []
+
+        for node in pathway.get('DataNode', [])[:30]:
+            node_type = node.get('Type')
+            node_label = node.get('TextLabel', '')
+
+            if node_type not in ['GeneProduct', 'Protein']:
+                continue
+
+            if node_label in node_labels:
+                continue
+
+            node_id = f"{pathway_id}_{node_label}"
+            node_icon = '🧬' if node_type == 'GeneProduct' else '⚛️'
+
+            nodes.append({
+                'id': node_id,
+                'label': node_label,
+                'group': 'gene' if node_type == 'GeneProduct' else 'protein',
+                'type': 'gene' if node_type == 'GeneProduct' else 'protein',
+                'icon': node_icon
+            })
+            node_labels.add(node_label)
+
+            edges.append({
+                'from': pathway_id,
+                'to': node_id,
+                'title': 'part of pathway'
+            })
+
+        return jsonify({
+            'nodes': nodes,
+            'edges': edges,
+            'center_id': pathway_id,
+            'pathway_name': pathway.get('Name', 'Unknown')
+        })
+
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 

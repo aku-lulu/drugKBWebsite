@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PharmRG - 生物医学知识图谱</title>
+    <title>DrugKB - 生物医学知识图谱</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <!-- vis.js 网络图库 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
@@ -14,7 +14,7 @@
         <!-- 左侧搜索面板 -->
         <div class="sidebar">
             <div class="logo">
-                <h1>Pharm<span>RG</span></h1>
+                <h1>Drug<span>KB</span></h1>
                 <p>生物医学知识图谱</p>
             </div>
 
@@ -22,9 +22,9 @@
                 <div class="search-type">
                     <label for="searchType">搜索类型：</label>
                     <select id="searchType">
-                        <option value="drug" selected>💊 药物 (DrugBank)</option>
-                        <option value="gene">🧬 基因 (WikiPathways)</option>
-                        <option value="protein">⚛️ 蛋白质 (WikiPathways)</option>
+                        <option value="drug" selected>💊 药物</option>
+                        <option value="gene">🧬 基因</option>
+                        <option value="protein">⚛️ 蛋白质</option>
                     </select>
                 </div>
 
@@ -56,20 +56,45 @@
                         <button id="zoomIn">+</button>
                         <button id="zoomOut">-</button>
                         <button id="fitGraph">适应屏幕</button>
-                        <!-- 聚类、展开全部、重置按钮会通过JavaScript动态添加 -->
+                    </div>
+                </div>
+                <!-- 图例放在标题下方 -->
+                <div class="graph-legend">
+                    <div class="legend-title">节点类型</div>
+                    <div class="legend-items">
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #00bcd4;"></span>
+                            <span class="legend-text">💊 药物</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #4caf50;"></span>
+                            <span class="legend-text">🧬 基因</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #ff9800;"></span>
+                            <span class="legend-text">⚛️ 蛋白质</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #9c27b0;"></span>
+                            <span class="legend-text">🔬 通路</span>
+                        </div>
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: #ffffff; border: 2px solid #00bcd4;"></span>
+                            <span class="legend-text">⭐ 当前选中</span>
+                        </div>
                     </div>
                 </div>
                 <div class="card-content">
                     <div id="graph-container"></div>
                 </div>
             </div>
-
-            <!-- 下方信息卡片区域 -->
+            <!-- 下方信息卡片区域 - 调整为三列布局 -->
             <div class="info-cards">
                 <!-- 分子结构信息 -->
                 <div class="card molecular-card">
                     <div class="card-header">
                         <h2 id="molecular-title">分子结构信息</h2>
+                         <span id="data-source-badge" class="source-badge" style="display: none;"></span>
                     </div>
                     <div class="card-content" id="molecularInfo">
                         <div class="info-grid">
@@ -101,6 +126,22 @@
                         <div class="description" id="mol-description">
                             <span class="label">描述:</span>
                             <p>-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 二维分子式展示区域 - 新增 -->
+                <div class="card structure-card">
+                    <div class="card-header">
+                        <h2>二维分子式</h2>
+                    </div>
+                    <div class="card-content structure-content" id="structureContent">
+                        <div class="structure-placeholder">
+                            <p>请选择一个药物查看分子结构</p>
+                        </div>
+                        <div class="structure-image-container" id="structureImageContainer" style="display: none;">
+                            <img id="drugStructureImage" src="" alt="二维分子结构">
+                            <div class="structure-smiles" id="structureSmiles"></div>
                         </div>
                     </div>
                 </div>
